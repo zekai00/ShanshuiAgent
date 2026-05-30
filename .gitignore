@@ -1,0 +1,48 @@
+# 1. 忽略 Python 编译缓存和虚拟环境
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# 2. 忽略庞大的项目数据文件
+data/
+raw_pdfs/
+vector_store/
+vector_store copy/
+
+# 3. 忽略运行产物和日志
+generated_images/
+logs/
+*.log
+
+# 4. 忽略庞大的 ComfyUI 独立项目环境
+# （建议使用者自行拉取 ComfyUI，或使用 Git Submodule）
+ComfyUI/
+
+# 5. 忽略包含真实秘钥的本地配置文件
+config/
+
+# 系统级缓存文件（如 Mac 的 .DS_Store）
+.DS_Store
+
+# -------- 新增忽略规则 --------
+
+# 1. 忽略测试目录
+tests/
+
+# 2. 忽略模型下载脚本
+downloads/
+
+# 3. 忽略所有废弃代码（兼容拼写错误）
+*legacy*/
+*lagacy*/
+
+# 4. 忽略本地运行产生的数据库文件（极其重要！）
+*.db
+*.sqlite
+src/agent/checkpoints.sqlite
+src/agent/memory/user_memories.db
+
+# 5. 忽略本地解压的 Neo4j 运行环境
+neo4j-community-*/

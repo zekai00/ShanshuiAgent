@@ -1,0 +1,128 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "flux_krea",
+      "images": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "63": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "t5xxl_fp16.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "双CLIP加载器"
+    }
+  },
+  "64": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "65": {
+    "inputs": {
+      "conditioning": [
+        "68",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "66": {
+    "inputs": {
+      "samples": [
+        "70",
+        0
+      ],
+      "vae": [
+        "64",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "67": {
+    "inputs": {
+      "unet_name": "flux1-krea-dev.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "68": {
+    "inputs": {
+      "text": "Chinese ink landscape painting in the style of Ma Yuan's \"one-corner\" composition, Southern Song Dynasty style. The painting focuses on the lower left corner with detailed elements: rugged rocks with axe-cut texture, sparse pine trees with twisted branches, a small pavilion or scholar's hut nestled among rocks, misty mountains fading into the distance. The right side and upper part of the painting are mostly empty space with subtle mist and clouds, creating strong contrast between solid forms and void. Ink wash technique with varying shades of gray, bold brushstrokes for rocks, delicate lines for trees. The composition emphasizes the \"one-corner\" aesthetic with minimal elements in the corner and vast emptiness elsewhere. The mood is contemplative and poetic, with a sense of solitude and tranquility. The painting should have the feeling of \"less is more\", where the empty space speaks as loudly as the painted elements.",
+      "clip": [
+        "63",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "69": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "空Latent图像（SD3）"
+    }
+  },
+  "70": {
+    "inputs": {
+      "seed": 505855422617125,
+      "steps": 20,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "67",
+        0
+      ],
+      "positive": [
+        "68",
+        0
+      ],
+      "negative": [
+        "65",
+        0
+      ],
+      "latent_image": [
+        "69",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  }
+}

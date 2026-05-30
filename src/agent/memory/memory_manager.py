@@ -1,18 +1,20 @@
 # /root/Workspace/ChineseLandscape/src/agent/memory/memory_manager.py
 
 import sqlite3
-import os
 import json
 from datetime import datetime
 
-# 数据库物理路径
-DB_PATH = "/root/Workspace/ChineseLandscape/src/agent/memory/user_memories.db"
+from src.config import USER_MEMORY_DB, ensure_runtime_dirs
+
+DB_PATH = USER_MEMORY_DB
 
 class MemoryManager:
     @staticmethod
     def _init_db():
         """初始化数据库表结构，确保支持 JSON 存储"""
-        conn = sqlite3.connect(DB_PATH)
+        ensure_runtime_dirs()
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_memories (
@@ -30,11 +32,11 @@ class MemoryManager:
         获取用户的长时结构化记忆。
         返回格式: {"preferences": [], "feedback": [], "context": []}
         """
-        if not os.path.exists(DB_PATH):
+        if not DB_PATH.exists():
             MemoryManager._init_db()
             return {"preferences": [], "feedback": [], "context": []}
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute("SELECT content FROM user_memories WHERE user_id = ?", (user_id,))
         result = cursor.fetchone()
@@ -78,7 +80,7 @@ class MemoryManager:
             old_memory["context"] = context_list[-10:]
 
         # 4. 写回数据库
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         

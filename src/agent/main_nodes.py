@@ -1,17 +1,13 @@
 # /root/Workspace/ChineseLandscape/src/agent/main_nodes.py
 
 import json
-import os
 import yaml
 import httpx
-import re
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AIMessage
-# 别忘了在 main_nodes.py 顶部导入 MemoryManager
-from src.agent.memory.memory_manager import MemoryManager
 
-load_dotenv()
+from src.config import AGENT_PROMPTS_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, FAST_LLM_MODEL
+from src.agent.memory.memory_manager import MemoryManager
 
 from .state import AgentState
 from .tools import researcher_tools, artist_tools, tools_by_name
@@ -19,14 +15,13 @@ from .tools import researcher_tools, artist_tools, tools_by_name
 # ==========================================
 # 1. 核心模型配置 (分级算力)
 # ==========================================
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
 proxy_free_client = httpx.Client(proxy=None, trust_env=False)
 
 # 🚀 极速模型：用于路由、闲聊及简单逻辑判断，关闭思考链
 llm_fast = ChatOpenAI(
-    model="deepseek-v4-flash",
-    api_key=os.environ.get("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com/v1",
+    model=FAST_LLM_MODEL,
+    api_key=DEEPSEEK_API_KEY,
+    base_url=DEEPSEEK_BASE_URL,
     temperature=0.1,
     http_client=proxy_free_client,
     model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}}
@@ -38,9 +33,9 @@ artist_llm = llm_fast.bind_tools(artist_tools)
 
 def get_prompt(yaml_filename: str) -> str:
     """动态读取 YAML 提示词，实现业务逻辑与指令分离"""
-    file_path = os.path.join(WORKSPACE_DIR, "src", "agent", "prompts", yaml_filename)
+    file_path = AGENT_PROMPTS_DIR / yaml_filename
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with file_path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return data.get("system_message", "")
     except FileNotFoundError:

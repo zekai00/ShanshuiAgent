@@ -12,20 +12,25 @@ import argparse
 import json
 import random
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from pymilvus import MilvusClient
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-LLAMA_FACTORY_DIR = Path("/root/Workspace/LLaMA-Factory")
-MILVUS_DB_PATH = WORKSPACE_DIR / "data" / "vector_store" / "milvus_landscape.db"
+from src.config import EXTRACTED_ARTWORKS_DIR, LLAMA_FACTORY_DIR, MILVUS_DB_PATH, RETRIEVAL_COLLECTION_NAME
+
 DEFAULT_OUTPUT = LLAMA_FACTORY_DIR / "data" / "researcher_rag_sft_v2.json"
-COLLECTION_NAME = "landscape_rag"
+COLLECTION_NAME = RETRIEVAL_COLLECTION_NAME
 
 
 def compact_space(text: str) -> str:
-    text = re.sub(r"/root/Workspace/ChineseLandscape/data/extracted_artworks/[^\s：\]]+", "[图像]", text)
+    image_root = re.escape(str(EXTRACTED_ARTWORKS_DIR))
+    text = re.sub(rf"{image_root}[^\s：\]]+", "[图像]", text)
     return re.sub(r"\s+", " ", text).strip()
 
 

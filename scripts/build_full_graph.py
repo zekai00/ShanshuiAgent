@@ -1,19 +1,19 @@
 # /root/Workspace/ChineseLandscape/scripts/build_full_graph.py
 
-import os
 import sys
+from pathlib import Path
 from tqdm import tqdm
 from pymilvus import MilvusClient
 
-# 强制将项目根目录加入寻址路径
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
-sys.path.append(WORKSPACE_DIR)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # 导入你的核心图谱构建器
+from src.config import MILVUS_DB_PATH, RETRIEVAL_COLLECTION_NAME
 from src.ingestion.linear_rag_graph import LinearRAGBuilder
 
-MILVUS_DB_PATH = os.path.join(WORKSPACE_DIR, "data", "vector_store", "milvus_landscape.db")
-COLLECTION_NAME = "landscape_rag"
+COLLECTION_NAME = RETRIEVAL_COLLECTION_NAME
 
 def build_full_knowledge_graph():
     print("="*60)
@@ -31,11 +31,11 @@ def build_full_knowledge_graph():
 
     # 2. 连接 Milvus 拉取全量上下文语料
     print("\n[*] 正在连接 Milvus 数据库提取语料...")
-    if not os.path.exists(MILVUS_DB_PATH):
+    if not MILVUS_DB_PATH.exists():
         print("[!] 未找到 Milvus 数据库，请先运行 run_ingestion.py！")
         sys.exit(1)
         
-    milvus_client = MilvusClient(MILVUS_DB_PATH)
+    milvus_client = MilvusClient(str(MILVUS_DB_PATH))
     milvus_client.load_collection(COLLECTION_NAME)
 
     # 通过 filter "id > 0" 暴力拉取所有主键和纯净文本

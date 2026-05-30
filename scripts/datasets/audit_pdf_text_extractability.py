@@ -4,14 +4,19 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import fitz
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-PROJECT_ROOT = Path("/root/Workspace/ChineseLandscape")
-META_ROOT = PROJECT_ROOT / "data" / "metadata"
+from src.config import METADATA_DIR
+
+META_ROOT = METADATA_DIR
 REGISTRY_PATH = META_ROOT / "文献级标注清单.jsonl"
 AUDIT_PATH = META_ROOT / "PDF文本可抽取性审计.jsonl"
 OCR_QUEUE_PATH = META_ROOT / "需OCR文献清单.jsonl"

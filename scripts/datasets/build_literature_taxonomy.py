@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-PROJECT_ROOT = Path("/root/Workspace/ChineseLandscape")
-META_ROOT = PROJECT_ROOT / "data" / "metadata"
+from src.config import METADATA_DIR
+
+META_ROOT = METADATA_DIR
 REGISTRY_PATH = META_ROOT / "文献级标注清单.jsonl"
 IMPORT_QUEUE_PATH = META_ROOT / "高权重导入队列.jsonl"
 FACETED_REGISTRY_PATH = META_ROOT / "文献多维标注清单.jsonl"

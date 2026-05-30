@@ -12,20 +12,25 @@ import argparse
 import json
 import random
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from pymilvus import MilvusClient
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-MILVUS_DB_PATH = WORKSPACE_DIR / "data" / "vector_store" / "milvus_landscape.db"
-COLLECTION_NAME = "landscape_rag"
+from src.config import DATA_DIR, EXTRACTED_ARTWORKS_DIR, MILVUS_DB_PATH, RETRIEVAL_COLLECTION_NAME
 
-DEFAULT_MAIN_OUTPUT = WORKSPACE_DIR / "data" / "eval" / "test_researcher_v2.jsonl"
-DEFAULT_FALSE_OUTPUT = WORKSPACE_DIR / "data" / "eval" / "test_researcher_false_premise_v2.jsonl"
-DEFAULT_SUMMARY_OUTPUT = WORKSPACE_DIR / "data" / "eval" / "test_researcher_v2_summary.json"
-V1_PATH = WORKSPACE_DIR / "data" / "eval" / "test_researcher_v1.jsonl"
+COLLECTION_NAME = RETRIEVAL_COLLECTION_NAME
+
+DEFAULT_MAIN_OUTPUT = DATA_DIR / "eval" / "test_researcher_v2.jsonl"
+DEFAULT_FALSE_OUTPUT = DATA_DIR / "eval" / "test_researcher_false_premise_v2.jsonl"
+DEFAULT_SUMMARY_OUTPUT = DATA_DIR / "eval" / "test_researcher_v2_summary.json"
+V1_PATH = DATA_DIR / "eval" / "test_researcher_v1.jsonl"
 
 TASK_COUNTS = {
     "factual_qa": 40,
@@ -68,7 +73,8 @@ GENERIC_TOPIC_TERMS = {
 
 def clean_text(text: Any) -> str:
     value = str(text or "")
-    value = re.sub(r"/root/Workspace/ChineseLandscape/data/extracted_artworks/[^\s：\]]+", "[图像]", value)
+    image_root = re.escape(str(EXTRACTED_ARTWORKS_DIR))
+    value = re.sub(rf"{image_root}[^\s：\]]+", "[图像]", value)
     return re.sub(r"\s+", " ", value).strip()
 
 

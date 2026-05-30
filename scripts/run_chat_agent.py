@@ -5,12 +5,14 @@ import sys
 import uuid
 import json
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings("ignore", message=".*extra_body.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
-sys.path.append(WORKSPACE_DIR)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # GRPC 与 Phoenix 配置保持原样
 os.environ["GRPC_KEEPALIVE_TIME_MS"] = "120000"

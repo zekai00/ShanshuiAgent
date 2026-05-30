@@ -1,20 +1,30 @@
-import os
 import json
 import sys
+from pathlib import Path
 from openai import OpenAI
 
 # 确保能导入你自己的检索器
-sys.path.append("/root/Workspace/ChineseLandscape")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.config import (
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    LLAMA_FACTORY_DIR,
+    RETRIEVAL_FINAL_K,
+    RETRIEVAL_TOP_K,
+)
 from src.retrieval.online_retrieval import OnlineHybridRetriever
 
 # 初始化 DeepSeek 客户端
-api_key = os.environ.get("DEEPSEEK_API_KEY")
+api_key = DEEPSEEK_API_KEY
 if not api_key:
     raise RuntimeError("请先在环境变量中设置 DEEPSEEK_API_KEY，不能在代码中写入 API Key。")
 
 client = OpenAI(
     api_key=api_key,
-    base_url="https://api.deepseek.com",
+    base_url=DEEPSEEK_BASE_URL,
 )
 
 def generate_responses(query, retrieved_docs):
@@ -51,7 +61,7 @@ def generate_responses(query, retrieved_docs):
 
 if __name__ == "__main__":
     print("[*] 正在启动底层检索引擎...")
-    retriever = OnlineHybridRetriever(top_k=10, final_k=3)
+    retriever = OnlineHybridRetriever(top_k=min(RETRIEVAL_TOP_K, 10), final_k=RETRIEVAL_FINAL_K)
     
     # 你的原始问题列表 (可以从你的 4500 条数据里提取)
     queries = [
@@ -84,8 +94,9 @@ if __name__ == "__main__":
             print("  ✅ 成功构建一对 DPO 样本！")
             
     # 保存结果
-    output_path = "/root/Workspace/LLaMA-Factory/data/landscape_dpo.json"
-    with open(output_path, 'w', encoding='utf-8') as f:
+    output_path = LLAMA_FACTORY_DIR / "data" / "landscape_dpo.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w', encoding='utf-8') as f:
         json.dump(dpo_dataset, f, ensure_ascii=False, indent=2)
         
     print(f"\n🎉 竣工！DPO 数据已保存至: {output_path}")

@@ -2,21 +2,34 @@
 
 import os
 import sys
+from pathlib import Path
 
-# 锁定项目根目录
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
+PROJECT_ROOT_FOR_IMPORT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT_FOR_IMPORT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT_FOR_IMPORT))
+
+from src.config import (
+    COLBERT_TENSORS_PATH,
+    EXTRACTED_ARTWORKS_DIR,
+    INGESTION_STATE_PATH,
+    MILVUS_DB_PATH,
+    NEO4J_PASSWORD as CFG_NEO4J_PASSWORD,
+    NEO4J_URI,
+    NEO4J_USERNAME,
+    PROJECT_ROOT,
+    RAW_PDFS_DIR,
+    UI_STATIC_DIR,
+    VECTOR_STORE_DIR,
+)
+
+WORKSPACE_DIR = str(PROJECT_ROOT)
 
 # 全新命名的资源路径
-PAPERS_FOLDER = os.path.join(WORKSPACE_DIR, "data", "raw_pdfs")
-IMAGES_FOLDER = os.path.join(WORKSPACE_DIR, "data", "extracted_artworks")
-DB_FOLDER = os.path.join(WORKSPACE_DIR, "data", "vector_store")
-TRACKING_FILE = os.path.join(DB_FOLDER, "ingestion_state.json") # MD5状态文件也在这里
-
-MILVUS_DB_PATH = os.path.join(DB_FOLDER, "milvus_landscape.db")
-COLBERT_FILE = os.path.join(DB_FOLDER, "colbert_tensors.pkl")
-
-# 强制将项目根目录加入寻址路径，解决跨目录 import 找不到包的问题
-sys.path.append("/root/Workspace/ChineseLandscape")
+PAPERS_FOLDER = RAW_PDFS_DIR
+IMAGES_FOLDER = EXTRACTED_ARTWORKS_DIR
+DB_FOLDER = VECTOR_STORE_DIR
+TRACKING_FILE = INGESTION_STATE_PATH
+COLBERT_FILE = COLBERT_TENSORS_PATH
 
 import io
 # 🌟 Web端交互 LangSmith 监控配置
@@ -30,21 +43,18 @@ import re
 import base64  # <--- 新增这行
 import gradio as gr
 from langchain_core.messages import HumanMessage, ToolMessage
-from Workspace.ChineseLandscape.src.agent.legacy.langgraph_agent import app
+from src.agent.graph import app
 
 # 🌟 新增导入：Neo4j 驱动与 PyVis 可视化引擎
 from neo4j import GraphDatabase
 from pyvis.network import Network
 
-# 全局路径配置
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
-PAPERS_FOLDER = os.path.join(WORKSPACE_DIR, "papers_folder")
-GRAPH_HTML_PATH = os.path.join(WORKSPACE_DIR, "ui", "static", "graph.html")
+GRAPH_HTML_PATH = UI_STATIC_DIR / "graph.html"
+GRAPH_HTML_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Neo4j 数据库凭证 (请确认密码是你刚才改过的)
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+NEO4J_USER = NEO4J_USERNAME
+NEO4J_PASSWORD = CFG_NEO4J_PASSWORD or ""
 
 # ==========================================
 # 核心组件 1：双路劫持器 (三通阀门)
@@ -108,10 +118,10 @@ def generate_graph_html():
         }
         """)
         
-        net.save_graph(GRAPH_HTML_PATH)
+        net.save_graph(str(GRAPH_HTML_PATH))
         
         # 🌟 修复 2：黑客级 Base64 注入，无视 Gradio 路由限制！
-        with open(GRAPH_HTML_PATH, 'r', encoding='utf-8') as f:
+        with GRAPH_HTML_PATH.open('r', encoding='utf-8') as f:
             html_content = f.read()
             
         b64_html = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
@@ -166,7 +176,7 @@ def chat_logic(user_message, history, current_state):
         
         pdf_matches = re.findall(r'来源:\s*(.*?\.pdf)', system_logs)
         if pdf_matches:
-            potential_path = os.path.join(PAPERS_FOLDER, pdf_matches[0].strip())
+            potential_path = str(PAPERS_FOLDER / pdf_matches[0].strip())
             if os.path.exists(potential_path):
                 pdf_html = f'<embed src="/file={potential_path}#view=FitH" width="100%" height="650px" type="application/pdf">'
 

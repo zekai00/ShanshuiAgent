@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-PROJECT_ROOT = Path("/root/Workspace/ChineseLandscape")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.config import RAW_PDFS_DIR
 from scripts.datasets.curate_authority_corpus import (
     AUTHORITY_WEIGHTS,
     DATASET_ROOT,
@@ -31,7 +32,7 @@ from scripts.datasets.curate_authority_corpus import (
 )
 
 
-LEGACY_RAW_ROOT = PROJECT_ROOT / "data" / "raw_pdfs"
+LEGACY_RAW_ROOT = RAW_PDFS_DIR
 DEST_CATEGORY = "07_既有项目文献"
 DEST_ROOT = RAW_ROOT / DEST_CATEGORY
 TZ = ZoneInfo("Asia/Shanghai")

@@ -1,18 +1,24 @@
 # /root/Workspace/ChineseLandscape/scripts/experiments/init_db.py
 
 import sqlite3
-import os
+import sys
+from pathlib import Path
 
-# 确保数据目录存在
-DB_DIR = "/root/Workspace/ChineseLandscape/src/agent/memory"
-os.makedirs(DB_DIR, exist_ok=True)
-DB_PATH = os.path.join(DB_DIR, "user_memories.db")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.config import USER_MEMORY_DB, ensure_runtime_dirs
+
+DB_PATH = USER_MEMORY_DB
 
 def init_database():
     """初始化 SQLite 数据库表结构"""
     print(f"[*] 正在初始化长时记忆数据库: {DB_PATH}")
     
-    conn = sqlite3.connect(DB_PATH)
+    ensure_runtime_dirs()
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     
     # 创建用户画像表

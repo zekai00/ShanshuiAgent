@@ -1,24 +1,32 @@
 import json
 import torch
 import re
+import sys
+from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.config import DATA_DIR, MODEL_DEVICE, RESEARCHER_BASE_MODEL_PATH
 
 # ==========================================
 # 1. 路径与参数配置
 # ==========================================
-base_model_path = "/root/models/Qwen3.5-9B"
-test_file = "/root/Workspace/ChineseLandscape/data/auto_generated_queries.json"
-output_file = "/root/Workspace/ChineseLandscape/data/base_answers.json" # 输出为 base 答案
+base_model_path = RESEARCHER_BASE_MODEL_PATH
+test_file = DATA_DIR / "auto_generated_queries.json"
+output_file = DATA_DIR / "base_answers.json" # 输出为 base 答案
 
 # ==========================================
 # 2. 加载基座模型与 Tokenizer (无 LoRA)
 # ==========================================
 print("[*] 正在加载纯净版基座模型入显存...")
-tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(str(base_model_path), trust_remote_code=True)
 
 base_model = AutoModelForCausalLM.from_pretrained(
-    base_model_path,
-    device_map="cuda:1",
+    str(base_model_path),
+    device_map=MODEL_DEVICE,
     torch_dtype=torch.bfloat16,
     trust_remote_code=True
 )
@@ -27,7 +35,7 @@ base_model.eval()
 # ==========================================
 # 3. 读取问题并开始推理
 # ==========================================
-with open(test_file, 'r', encoding='utf-8') as f:
+with test_file.open('r', encoding='utf-8') as f:
     queries = json.load(f)
 
 print(f"[*] 开始解答 {len(queries)} 个问题...")
@@ -78,7 +86,8 @@ for i, query in enumerate(queries):
 # ==========================================
 # 4. 保存结果
 # ==========================================
-with open(output_file, 'w', encoding='utf-8') as f:
+output_file.parent.mkdir(parents=True, exist_ok=True)
+with output_file.open('w', encoding='utf-8') as f:
     json.dump(answers, f, ensure_ascii=False, indent=2)
 
 print(f"\n🎉 原版基座模型解答完毕！已保存至 {output_file}")

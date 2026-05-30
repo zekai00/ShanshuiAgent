@@ -1,6 +1,5 @@
 # /root/Workspace/ChineseLandscape/src/agent/core/tools.py
 
-import os
 import random
 import time
 import json
@@ -8,12 +7,21 @@ import requests
 import urllib.parse
 from langchain_core.tools import tool
 
+from src.config import (
+    COMFYUI_SERVER_URL,
+    COMFYUI_WORKFLOW_PATH,
+    GENERATED_IMAGES_DIR,
+    RETRIEVAL_SERVICE_URL,
+    ensure_runtime_dirs,
+)
+
 # ==========================================
 # 底层引擎懒加载单例 (防止多次挂载 BGE 模型导致显存爆炸)
 # ==========================================
 _global_retriever = None
-IMAGE_SAVE_DIR = "/root/Workspace/ChineseLandscape/generated_images"
-os.makedirs(IMAGE_SAVE_DIR, exist_ok=True)
+IMAGE_SAVE_DIR = GENERATED_IMAGES_DIR
+ensure_runtime_dirs()
+IMAGE_SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_online_retriever():
     global _global_retriever
@@ -23,9 +31,6 @@ def get_online_retriever():
         _global_retriever = OnlineHybridRetriever(top_k=15, final_k=3)
     return _global_retriever
 
-# 修改 src/agent/tools.py
-import requests
-
 @tool("search_landscape_literature")
 def search_landscape_literature(query: str) -> str:
     """当用户询问中国山水画的技法、历史、画家、构图等理论知识时调用。"""
@@ -33,7 +38,7 @@ def search_landscape_literature(query: str) -> str:
     
     # 🌟 直接向常驻后台的检索引擎发请求，毫秒级返回，不再需要本地预热！
     try:
-        response = requests.post("http://127.0.0.1:8000/retrieve", json={"query": query}, timeout=30)
+        response = requests.post(f"{RETRIEVAL_SERVICE_URL}/retrieve", json={"query": query}, timeout=30)
         results = response.json().get("data", [])
     except Exception as e:
         return f"检索引擎服务未启动或连接异常: {e}"
@@ -61,11 +66,11 @@ def generate_landscape_image(prompt: str, width: int = 1024, height: int = 1024)
     """当用户要求生成图像时调用。传入详尽的【英文】绘画提示词及尺寸。"""
     print(f"\n[🎨 工具执行] Artist 下发参数 -> 尺寸: {width}x{height} prompt是：{prompt}")
     proxies = {"http": None, "https": None}
-    server_address = "http://127.0.0.1:8188"
-    workflow_path = "/root/Workspace/ChineseLandscape/workflows/flux1_krea_dev-api.json"
+    server_address = COMFYUI_SERVER_URL
+    workflow_path = COMFYUI_WORKFLOW_PATH
     
     try:
-        with open(workflow_path, 'r', encoding='utf-8') as f:
+        with workflow_path.open('r', encoding='utf-8') as f:
             workflow_data = json.load(f)
         workflow_data["68"]["inputs"]["text"] = prompt
         workflow_data["69"]["inputs"]["width"] = width
@@ -96,8 +101,8 @@ def generate_landscape_image(prompt: str, width: int = 1024, height: int = 1024)
                         filename = img_info['filename']
                         img_url = f"{server_address}/view?filename={urllib.parse.quote(filename)}&subfolder={urllib.parse.quote(img_info['subfolder'])}&type={img_info['type']}"
                         img_data = requests.get(img_url, proxies=proxies, timeout=30).content
-                        final_save_path = os.path.join(IMAGE_SAVE_DIR, filename)
-                        with open(final_save_path, 'wb') as f: f.write(img_data)
+                        final_save_path = IMAGE_SAVE_DIR / filename
+                        with final_save_path.open('wb') as f: f.write(img_data)
                         return f"图像渲染成功！已保存至: {final_save_path}"
             retry_count += 1
             time.sleep(3)

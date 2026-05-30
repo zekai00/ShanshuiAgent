@@ -14,14 +14,20 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from jsonschema import Draft202012Validator
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-EVAL_DIR = WORKSPACE_DIR / "data" / "eval"
+from src.config import DATA_DIR
+
+EVAL_DIR = DATA_DIR / "eval"
 
 DEFAULT_MAIN_INPUT = EVAL_DIR / "test_researcher_v2.jsonl"
 DEFAULT_FALSE_INPUT = EVAL_DIR / "test_researcher_false_premise_v2.jsonl"

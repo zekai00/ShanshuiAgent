@@ -76,7 +76,7 @@ class LandscapeDatabaseManager:
                 print(f"[!] 致命错误：无法删除旧数据库。{e}")
                 sys.exit(1)
                 
-        self.client = MilvusClient(self.db_path)
+        self.client = MilvusClient(str(self.db_path))
             
         if not self.client.has_collection(self.collection_name):
             print("\n[*] 正在创建 Milvus 稠密+稀疏 双擎数据表 (含 ARRAY 高阶类型)...")

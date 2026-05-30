@@ -3,8 +3,15 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.config import AUTHORITY_CORPUS_DIR, RAW_PDFS_DIR
 
 from curate_authority_corpus import (
     build_registry,
@@ -14,8 +21,8 @@ from curate_authority_corpus import (
 )
 
 
-PROJECT_RAW_ROOT = Path("/root/Workspace/ChineseLandscape/data/raw_pdfs")
-DATASET_LEGACY_ROOT = Path("/root/datasets/chinese_landscape_authority_corpus/raw_pdfs/07_既有项目文献")
+PROJECT_RAW_ROOT = RAW_PDFS_DIR
+DATASET_LEGACY_ROOT = AUTHORITY_CORPUS_DIR / "raw_pdfs" / "07_既有项目文献"
 
 
 RENAMES: dict[str, dict[str, Any]] = {

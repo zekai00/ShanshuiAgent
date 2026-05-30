@@ -13,19 +13,29 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from pymilvus import MilvusClient
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-MILVUS_DB_PATH = WORKSPACE_DIR / "data" / "vector_store" / "milvus_landscape.db"
-COLLECTION_NAME = "landscape_rag"
-DEFAULT_OUTPUT_DIR = WORKSPACE_DIR / "data" / "processed" / "documents"
+from src.config import (
+    MILVUS_DB_PATH,
+    PROCESSED_DOCUMENTS_DIR,
+    RAW_PDFS_DIR,
+    RETRIEVAL_COLLECTION_NAME,
+)
 
-IMAGE_REF_PATTERN = re.compile(r"/root/Workspace/ChineseLandscape/data/extracted_artworks/[^\]\s：:，,。；;）)]+")
+COLLECTION_NAME = RETRIEVAL_COLLECTION_NAME
+DEFAULT_OUTPUT_DIR = PROCESSED_DOCUMENTS_DIR
+
+IMAGE_REF_PATTERN = re.compile(r".*?/data/extracted_artworks/[^\]\s：:，,。；;）)]+")
 IMAGE_PAGE_PATTERN = re.compile(r"_p(\d+)_")
 
 
@@ -139,7 +149,7 @@ def build_store(rows: list[dict[str, Any]], output_dir: Path) -> dict[str, Any]:
             "source_file": source_file,
             "title": title,
             "normalized_title": normalize_title(title),
-            "pdf_path": str(WORKSPACE_DIR / "data" / "raw_pdfs" / source_file),
+            "pdf_path": str(RAW_PDFS_DIR / source_file),
             "provenance_status": "legacy_milvus_migration",
             "page_provenance_status": "partial_or_unknown",
             "chunk_count": 0,

@@ -23,15 +23,17 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from openai import OpenAI
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-sys.path.append(str(WORKSPACE_DIR))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
+from src.config import DATA_DIR, DOCS_DIR
 from src.agent.main_nodes import researcher_node  # noqa: E402
 
-DEFAULT_INPUT = WORKSPACE_DIR / "data" / "eval" / "test_researcher_v1.jsonl"
-DEFAULT_OUTPUT = WORKSPACE_DIR / "data" / "eval" / "baseline_researcher_answer_v1.jsonl"
-DEFAULT_REPORT = WORKSPACE_DIR / "docs" / "研究员回答基线评测报告.md"
-DEFAULT_MANUAL_OVERRIDES = WORKSPACE_DIR / "data" / "eval" / "researcher_answer_manual_overrides_v1.json"
+DEFAULT_INPUT = DATA_DIR / "eval" / "test_researcher_v1.jsonl"
+DEFAULT_OUTPUT = DATA_DIR / "eval" / "baseline_researcher_answer_v1.jsonl"
+DEFAULT_REPORT = DOCS_DIR / "研究员回答基线评测报告.md"
+DEFAULT_MANUAL_OVERRIDES = DATA_DIR / "eval" / "researcher_answer_manual_overrides_v1.json"
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:

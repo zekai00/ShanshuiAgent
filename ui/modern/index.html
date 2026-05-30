@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChineseLandscape</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <canvas id="ink-field" aria-hidden="true"></canvas>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">山</span>
+          <div>
+            <strong>ChineseLandscape</strong>
+            <span>Research Console</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="chat">对话</button>
+          <button class="nav-item" data-view="evidence">证据</button>
+          <button class="nav-item" data-view="corpus">语料</button>
+          <button class="nav-item" data-view="system">系统</button>
+        </nav>
+        <div class="status-strip">
+          <span id="health-dot" class="dot pending"></span>
+          <span id="health-text">检查中</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section id="view-chat" class="view active">
+          <header class="topbar">
+            <div>
+              <h1>山水画研究员</h1>
+              <p id="runtime-line">RAG evidence chain</p>
+            </div>
+            <button id="clear-chat" class="ghost-button" type="button">清空</button>
+          </header>
+
+          <div class="chat-layout">
+            <section class="conversation" aria-label="对话记录">
+              <div id="messages" class="messages"></div>
+              <form id="chat-form" class="composer">
+                <textarea id="chat-input" rows="2" placeholder="输入你的问题"></textarea>
+                <button id="send-button" type="submit">发送</button>
+              </form>
+            </section>
+            <aside class="evidence-rail">
+              <div class="rail-title">
+                <span>当前证据</span>
+                <small id="evidence-count">0</small>
+              </div>
+              <div id="evidence-list" class="evidence-list"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="view-evidence" class="view">
+          <header class="topbar">
+            <div>
+              <h1>证据检索</h1>
+              <p>Milvus + evidence store</p>
+            </div>
+          </header>
+          <form id="retrieve-form" class="search-row">
+            <input id="retrieve-input" type="search" placeholder="检索画家、流派、技法或错误前提" />
+            <button type="submit">检索</button>
+          </form>
+          <div id="retrieve-results" class="result-grid"></div>
+        </section>
+
+        <section id="view-corpus" class="view">
+          <header class="topbar">
+            <div>
+              <h1>语料库</h1>
+              <p id="corpus-summary">加载中</p>
+            </div>
+            <button id="refresh-corpus" class="ghost-button" type="button">刷新</button>
+          </header>
+          <div id="corpus-table" class="corpus-table"></div>
+        </section>
+
+        <section id="view-system" class="view">
+          <header class="topbar">
+            <div>
+              <h1>系统状态</h1>
+              <p>本地服务与索引</p>
+            </div>
+          </header>
+          <div id="system-panel" class="system-panel"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

@@ -1,10 +1,10 @@
 # /root/Workspace/ChineseLandscape/src/agent/graph.py
 
 import sqlite3
-import os
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from src.config import AGENT_CHECKPOINT_DB, ensure_runtime_dirs
 from .state import AgentState
 from .main_nodes import (
     gateway_node, summarizer_node, supervisor_node,
@@ -84,9 +84,9 @@ main_builder.add_edge("chatter", END)          # 闲聊完，本回合强制结�
 # ==========================================
 # 4. 编译与物理持久化
 # ==========================================
-DB_DIR = os.path.dirname(os.path.abspath(__file__))
-checkpoint_db = os.path.join(DB_DIR, "checkpoints.sqlite")
-conn = sqlite3.connect(checkpoint_db, check_same_thread=False)
+ensure_runtime_dirs()
+AGENT_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(str(AGENT_CHECKPOINT_DB), check_same_thread=False)
 memory = SqliteSaver(conn)
 
 # 编译为可执行应用

@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-WORKSPACE_DIR = Path("/root/Workspace/ChineseLandscape")
-RAW_PDFS_DIR = WORKSPACE_DIR / "data" / "raw_pdfs"
-DEFAULT_OUTPUT = WORKSPACE_DIR / "data" / "eval" / "researcher_eval_candidates.jsonl"
+from src.config import DATA_DIR, RAW_PDFS_DIR
+
+DEFAULT_OUTPUT = DATA_DIR / "eval" / "researcher_eval_candidates.jsonl"
 
 
 def infer_task_type(filename: str) -> str:

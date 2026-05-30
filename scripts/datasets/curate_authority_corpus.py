@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 from collections import Counter, defaultdict
@@ -28,14 +29,18 @@ import fitz
 import requests
 from bs4 import BeautifulSoup
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-DATASET_ROOT = Path("/root/datasets/chinese_landscape_authority_corpus")
+from src.config import AUTHORITY_CORPUS_DIR, METADATA_DIR
+
+DATASET_ROOT = AUTHORITY_CORPUS_DIR
 RAW_ROOT = DATASET_ROOT / "raw_pdfs"
 META_ROOT = DATASET_ROOT / "metadata"
 PARTS_ROOT = META_ROOT / "pdf_parts"
 TEXT_ROOT = META_ROOT / "text_sources"
-PROJECT_ROOT = Path("/root/Workspace/ChineseLandscape")
-PROJECT_META_ROOT = PROJECT_ROOT / "data" / "metadata"
+PROJECT_META_ROOT = METADATA_DIR
 
 SOURCES_PATH = META_ROOT / "sources.jsonl"
 MANIFEST_PATH = META_ROOT / "manifest.json"
@@ -925,8 +930,8 @@ def write_manifest_and_source_list(rows: dict[str, dict[str, Any]]) -> dict[str,
         "",
         "## 项目导入清单",
         "",
-        "- 项目文献级标注：`/root/Workspace/ChineseLandscape/data/metadata/文献级标注清单.jsonl`",
-        "- 高权重导入队列：`/root/Workspace/ChineseLandscape/data/metadata/高权重导入队列.jsonl`",
+        f"- 项目文献级标注：`{PROJECT_META_ROOT / '文献级标注清单.jsonl'}`",
+        f"- 高权重导入队列：`{PROJECT_META_ROOT / '高权重导入队列.jsonl'}`",
         "",
         "## 使用约束",
         "",

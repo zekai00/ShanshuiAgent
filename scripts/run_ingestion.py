@@ -2,8 +2,8 @@
 
 import os
 import sys
-import sys
 import warnings
+from pathlib import Path
 
 # 🌟 全局屏蔽 pkg_resources 弃用警告，保持终端纯净
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
@@ -12,8 +12,9 @@ import glob
 import uuid
 
 # 🌟 1. 强制将项目根目录加入寻址路径，解决跨目录 import 报错
-WORKSPACE_DIR = "/root/Workspace/ChineseLandscape"
-sys.path.append(WORKSPACE_DIR)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # 🌟 2. LangSmith 全局观测配置 (必须在引入其他包之前)
 # 不在代码中写入 API Key；如需启用追踪，请在环境变量中配置 LANGCHAIN_API_KEY。
@@ -25,16 +26,22 @@ os.environ.setdefault("LANGCHAIN_PROJECT", "ChineseLandscape_Offline_Ingestion")
 # 🌟 3. 从内部工厂提取组装零件
 from src.ingestion.ingestion_manager import IngestionStateManager, LandscapeDatabaseManager
 from src.ingestion.document_processor import DocumentProcessor
-from Workspace.ChineseLandscape.src.retrieval.bge_m3_engine import BGEM3Engine
+from src.config import (
+    BGE_M3_PATH,
+    COLBERT_TENSORS_PATH,
+    EXTRACTED_ARTWORKS_DIR,
+    INGESTION_STATE_PATH,
+    MILVUS_DB_PATH,
+    MODEL_DEVICE,
+    RAW_PDFS_DIR,
+)
+from src.retrieval.bge_m3_engine import BGEM3Engine
 
 # 🌟 4. 全局物理路径重映射 (适配新目录架构)
-PAPERS_FOLDER = os.path.join(WORKSPACE_DIR, "data", "raw_pdfs")
-IMAGES_FOLDER = os.path.join(WORKSPACE_DIR, "data", "extracted_artworks") 
-DB_FOLDER = os.path.join(WORKSPACE_DIR, "data", "vector_store")
-TRACKING_FILE = os.path.join(DB_FOLDER, "ingested_pdfs_state.json")
-
-MILVUS_DB_PATH = os.path.join(DB_FOLDER, "milvus_landscape.db")
-COLBERT_FILE = os.path.join(DB_FOLDER, "colbert_tensors.pkl")
+PAPERS_FOLDER = RAW_PDFS_DIR
+IMAGES_FOLDER = EXTRACTED_ARTWORKS_DIR
+TRACKING_FILE = INGESTION_STATE_PATH
+COLBERT_FILE = COLBERT_TENSORS_PATH
 
 def interactive_startup_routing():
     """交互式防呆与状态校验引擎"""
@@ -46,7 +53,7 @@ def interactive_startup_routing():
     db_manager = LandscapeDatabaseManager(MILVUS_DB_PATH, COLBERT_FILE)
     
     print("\n[*] 正在扫描文件库与进行 MD5 指纹校验...")
-    pdf_files = sorted(glob.glob(os.path.join(PAPERS_FOLDER, "*.pdf")))
+    pdf_files = sorted(glob.glob(str(PAPERS_FOLDER / "*.pdf")))
     if not pdf_files:
         print("[!] ❌ 错误：在 data/raw_pdfs 中未找到任何 PDF 文件。程序退出。")
         sys.exit(0)
@@ -104,11 +111,11 @@ if __name__ == "__main__":
         if not pending_files: sys.exit(0)
             
         print("\n[*] 正在启动大模型引擎与 BGE-M3...")
-        doc_processor = DocumentProcessor(images_save_dir=IMAGES_FOLDER)
-        bge_m3_engine = BGEM3Engine(model_path="/root/models/bge-m3", device="cuda:0")
+        doc_processor = DocumentProcessor(images_save_dir=str(IMAGES_FOLDER))
+        bge_m3_engine = BGEM3Engine(model_path=str(BGE_M3_PATH), device=MODEL_DEVICE)
         
         for idx, filename in enumerate(pending_files):
-            pdf_path = os.path.join(PAPERS_FOLDER, filename)
+            pdf_path = str(PAPERS_FOLDER / filename)
             print(f"\n▶️ [{idx+1}/{len(pending_files)}] 开始处理: {filename}", flush=True)
             
             clean_full_text = doc_processor.extract_and_crop(pdf_path, filename)

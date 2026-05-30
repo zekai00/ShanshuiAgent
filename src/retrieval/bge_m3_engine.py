@@ -1,18 +1,21 @@
 # /root/Workspace/ChineseLandscape/src/core/bge_m3_engine.py
 import os
-import torch
-from pprint import pprint
 # 这里必须使用智源官方的 FlagEmbedding，LangChain 的不支持三输出
 from FlagEmbedding import BGEM3FlagModel 
 
+from src.config import BGE_M3_PATH, MODEL_DEVICE
+
 class BGEM3Engine:
-    def __init__(self, model_path: str = "/root/models/bge-m3", device: str = "cuda:0"):
+    def __init__(self, model_path: str | None = None, device: str | None = None):
         """
         原理：加载 BGE-M3 权重。这是一个多任务混合架构的模型。
         use_fp16=True 可以节省一半显存，且几乎不影响检索精度。
         """
+        model_path = str(model_path or BGE_M3_PATH)
+        device = device or MODEL_DEVICE
+        use_fp16 = str(device).startswith("cuda")
         print(f"[*] 正在将 BGE-M3 三栖引擎挂载至 {device} (启用 FP16 加速)...")
-        self.model = BGEM3FlagModel(model_path, use_fp16=True, device=device)
+        self.model = BGEM3FlagModel(model_path, use_fp16=use_fp16, device=device)
         print("[*] BGE-M3 挂载完毕！")
 
     def encode_corpus(self, texts: list):

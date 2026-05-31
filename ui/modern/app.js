@@ -474,6 +474,7 @@ function renderSystem(data) {
     ["向量模型", modelName(data.retriever_models?.encoder)],
     ["重排模型", modelName(data.retriever_models?.reranker)],
     ["证据库", data.evidence_dir ? "已加载" : "未知"],
+    ["路由策略", data.router?.llm_enabled ? `规则 + ${data.router.router_model} + 阈值 ${data.router.min_rerank_score}` : `规则 + 阈值 ${data.router?.min_rerank_score ?? "n/a"}`],
     ["训练模型", data.trained_researcher_lora_exists ? "已存在，当前未用于前端回答" : "未发现"],
   ];
   $("#system-panel").innerHTML = metrics

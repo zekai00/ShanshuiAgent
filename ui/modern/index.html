@@ -8,6 +8,18 @@
   </head>
   <body>
     <canvas id="ink-field" aria-hidden="true"></canvas>
+    <section id="intro-screen" class="intro-screen" aria-label="进入工作台">
+      <div class="intro-lines" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="intro-content">
+        <p>ChineseLandscape</p>
+        <h1>山水画研究员</h1>
+        <button id="enter-app" type="button">进入工作台</button>
+      </div>
+    </section>
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
@@ -92,6 +104,23 @@
           <div id="system-panel" class="system-panel"></div>
         </section>
       </main>
+    </div>
+    <div id="pdf-modal" class="pdf-modal" hidden>
+      <div class="pdf-viewer" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
+        <header class="pdf-viewer-header">
+          <div>
+            <strong id="pdf-title">证据页</strong>
+            <span id="pdf-subtitle">PDF page preview</span>
+          </div>
+          <div class="pdf-actions">
+            <a id="download-pdf" class="ghost-button" href="#" target="_blank" rel="noreferrer">下载 PDF</a>
+            <button id="close-pdf" class="ghost-button" type="button">关闭</button>
+          </div>
+        </header>
+        <div class="pdf-page-frame">
+          <img id="pdf-page-img" alt="PDF 对应页预览" />
+        </div>
+      </div>
     </div>
     <script src="/assets/app.js"></script>
   </body>

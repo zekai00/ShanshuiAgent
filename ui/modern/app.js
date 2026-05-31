@@ -43,26 +43,66 @@ function renderMessage(role, content, loading = false) {
 }
 
 function citationButton(rank) {
-  return `<sup><button class="citation-link" type="button" data-evidence-ref="${rank}" title="跳转到证据 ${rank}">[${rank}]</button></sup>`;
+  return `<sup><button class="citation-link" type="button" data-evidence-ref="${rank}" title="查看证据 ${rank}">[${rank}]</button></sup>`;
 }
 
-function renderAnswerHtml(content) {
-  let html = escapeHtml(content || "");
+function stripChunkIds(text) {
+  return String(text || "")
+    .replace(/[，,；;]?\s*chunk_id\s*[：:]\s*[\w-]+/gi, "")
+    .replace(/\s+（\s*）/g, "");
+}
+
+function cleanAnswerContent(content) {
+  let text = stripChunkIds(String(content || "").replace(/\r\n/g, "\n"));
+  text = text.replace(/^\s*前提判断[：:]\s*(可以回答|可以作答|问题可以回答|前提正常)[。.]?\s*/u, "");
+  text = text.replace(/^\s*前提判断[：:]\s*/u, "");
+  text = text.replace(/^\s*依据与解释[：:]\s*/u, "");
+  text = text.replace(/\n\s*依据与解释[：:]\s*/gu, "\n");
+  return text.trimStart();
+}
+
+function splitSourceSection(text) {
+  const match = text.match(/\n?\s*来源[：:]\s*/u);
+  if (!match || match.index === undefined) {
+    return { body: text, sources: "", sourceCount: 0 };
+  }
+  const body = text.slice(0, match.index).trimEnd();
+  const sources = text.slice(match.index + match[0].length).trim();
+  const explicitCount = (sources.match(/(?:^|\n)\s*(?:[-*]\s*)?\[\d+\]/gu) || []).length;
+  const fallbackCount = sources.split("\n").filter((line) => line.trim()).length;
+  return { body, sources, sourceCount: explicitCount || fallbackCount };
+}
+
+function renderRichText(text) {
+  let html = escapeHtml(text || "");
   const citations = [];
   const stashCitation = (rank) => {
     const token = `@@CITATION_${citations.length}@@`;
     citations.push(citationButton(rank));
     return token;
   };
-  html = html.replace(/[（(]证据\[(\d+)\][：:][^）)]*[）)]/g, (_match, rank) => stashCitation(rank));
-  html = html.replace(/证据\[(\d+)\][：:][^\n。；;]*chunk_id[^\n。；;]*/g, (_match, rank) => stashCitation(rank));
-  html = html.replace(/\[(\d+)\]/g, (_match, rank) => stashCitation(rank));
+  html = html.replace(/[（(]证据\[(\d+)\][：:][^）)]*[）)]/gu, (_match, rank) => stashCitation(rank));
+  html = html.replace(/证据\[(\d+)\][：:][^\n。；;]*/gu, (_match, rank) => stashCitation(rank));
+  html = html.replace(/\[(\d+)\]/gu, (_match, rank) => stashCitation(rank));
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\n/g, "<br>");
   citations.forEach((value, index) => {
     html = html.replace(`@@CITATION_${index}@@`, value);
   });
   return html;
+}
+
+function renderAnswerHtml(content) {
+  const cleaned = cleanAnswerContent(content);
+  const { body, sources, sourceCount } = splitSourceSection(cleaned);
+  const bodyHtml = renderRichText(body);
+  if (!sources) return bodyHtml;
+
+  const sourceHtml = renderRichText(sources);
+  if (sourceCount >= 5) {
+    return `${bodyHtml}<details class="source-fold"><summary>来源（${sourceCount} 条）</summary><div>${sourceHtml}</div></details>`;
+  }
+  return `${bodyHtml}<div class="source-section"><div class="source-title">来源</div>${sourceHtml}</div>`;
 }
 
 function renderEvidence(target, evidence) {
@@ -76,6 +116,13 @@ function renderEvidence(target, evidence) {
     node.className = "evidence-item";
     node.id = `evidence-${item.rank}`;
     node.dataset.rank = String(item.rank);
+    node.evidenceItem = item;
+    const pageAction = item.page_image_url
+      ? `<button class="mini-button preview-page" type="button" data-rank="${escapeHtml(item.rank)}">查看页</button>`
+      : "";
+    const downloadAction = item.pdf_url
+      ? `<a class="mini-button" href="${escapeHtml(item.pdf_url)}" target="_blank" rel="noreferrer">下载 PDF</a>`
+      : "";
     node.innerHTML = `
       <strong>${escapeHtml(item.source_file || item.title || "未知来源")}</strong>
       <div class="evidence-meta">
@@ -84,6 +131,7 @@ function renderEvidence(target, evidence) {
         <span>${escapeHtml(scoreLabel(item))}</span>
       </div>
       <p>${escapeHtml(item.preview || "")}</p>
+      <div class="evidence-actions">${pageAction}${downloadAction}</div>
     `;
     target.appendChild(node);
   }
@@ -119,9 +167,7 @@ async function loadHealth() {
     const data = await fetchJson("/health");
     state.health = data;
     setHealth(true, data.llm_configured ? "LLM 已配置" : "证据模式");
-    const manifest = data.manifest || {};
-    const chunks = manifest.chunk_count || manifest.chunks || "ready";
-    $("#runtime-line").textContent = `Authority evidence: ${chunks}`;
+    $("#runtime-line").textContent = "证据页可预览，可下载原始 PDF";
     renderSystem(data);
   } catch (error) {
     setHealth(false, "服务异常");
@@ -132,10 +178,47 @@ async function loadHealth() {
 function jumpToEvidence(rank) {
   switchView("chat");
   const node = document.querySelector(`#evidence-${CSS.escape(String(rank))}`);
-  if (!node) return;
-  node.scrollIntoView({ behavior: "smooth", block: "center" });
-  node.classList.add("active-evidence");
-  window.setTimeout(() => node.classList.remove("active-evidence"), 1400);
+  const item = state.evidence.find((evidence) => String(evidence.rank) === String(rank));
+  if (node) {
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    node.classList.add("active-evidence");
+    window.setTimeout(() => node.classList.remove("active-evidence"), 1400);
+  }
+  if (item) openPdfPreview(item);
+}
+
+function openPdfPreview(item) {
+  if (!item || !item.page_image_url) return;
+  $("#pdf-title").textContent = item.source_file || item.title || "证据页";
+  $("#pdf-subtitle").textContent = pageLabel(item);
+  const image = $("#pdf-page-img");
+  image.removeAttribute("src");
+  image.src = item.page_image_url;
+  image.alt = `${item.source_file || item.title || "PDF"} ${pageLabel(item)}`;
+  const download = $("#download-pdf");
+  if (item.pdf_url) {
+    download.href = item.pdf_url;
+    download.hidden = false;
+  } else {
+    download.hidden = true;
+  }
+  $("#pdf-modal").hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closePdfPreview() {
+  $("#pdf-modal").hidden = true;
+  $("#pdf-page-img").removeAttribute("src");
+  document.body.classList.remove("modal-open");
+}
+
+function handleEvidenceClick(event) {
+  const previewButton = event.target.closest(".preview-page");
+  if (!previewButton) return;
+  const card = previewButton.closest(".evidence-item");
+  if (card?.evidenceItem) {
+    openPdfPreview(card.evidenceItem);
+  }
 }
 
 async function readNdjsonStream(response, onEvent) {
@@ -212,9 +295,8 @@ async function loadCorpus() {
   table.innerHTML = '<div class="empty">加载中</div>';
   try {
     const data = await fetchJson("/api/corpus");
-    const manifest = data.manifest || {};
     const docs = data.documents || [];
-    $("#corpus-summary").textContent = `${manifest.document_count || docs.length} 篇文献，${manifest.chunk_count || "?"} 个证据块`;
+    $("#corpus-summary").textContent = "文献索引已加载";
     table.innerHTML = "";
     if (!docs.length) {
       table.innerHTML = '<div class="empty">暂无文献清单</div>';
@@ -237,13 +319,13 @@ async function loadCorpus() {
 }
 
 function renderSystem(data) {
-  const manifest = data.manifest || {};
+  const modelName = (value) => String(value || "未知").split("/").filter(Boolean).pop() || "未知";
   const metrics = [
     ["Answer Model", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
     ["Provider", data.answer_provider || "未知"],
-    ["Evidence Dir", data.evidence_dir || "未知"],
-    ["Documents", manifest.document_count ?? "未知"],
-    ["Chunks", manifest.chunk_count ?? "未知"],
+    ["Encoder", modelName(data.retriever_models?.encoder)],
+    ["Reranker", modelName(data.retriever_models?.reranker)],
+    ["Evidence Store", data.evidence_dir ? "已加载" : "未知"],
     ["Local LoRA", data.trained_researcher_lora_exists ? "存在但未接入前端" : "未发现"],
   ];
   $("#system-panel").innerHTML = metrics
@@ -260,6 +342,10 @@ function switchView(view) {
 
 function setupEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => switchView(item.dataset.view)));
+  $("#enter-app").addEventListener("click", () => {
+    $("#intro-screen").classList.add("intro-hidden");
+    $("#chat-input").focus();
+  });
   $("#chat-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const input = $("#chat-input");
@@ -267,6 +353,12 @@ function setupEvents() {
     if (!message) return;
     input.value = "";
     sendChat(message);
+  });
+  $("#chat-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      $("#chat-form").requestSubmit();
+    }
   });
   $("#retrieve-form").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -282,6 +374,15 @@ function setupEvents() {
   $("#messages").addEventListener("click", (event) => {
     const target = event.target.closest(".citation-link");
     if (target) jumpToEvidence(target.dataset.evidenceRef);
+  });
+  $("#evidence-list").addEventListener("click", handleEvidenceClick);
+  $("#retrieve-results").addEventListener("click", handleEvidenceClick);
+  $("#close-pdf").addEventListener("click", closePdfPreview);
+  $("#pdf-modal").addEventListener("click", (event) => {
+    if (event.target.id === "pdf-modal") closePdfPreview();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("#pdf-modal").hidden) closePdfPreview();
   });
 }
 

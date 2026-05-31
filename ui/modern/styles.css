@@ -206,15 +206,33 @@ button {
 }
 
 .brand-mark {
-  display: grid;
+  display: inline-flex;
+  flex: 0 0 auto;
   width: 44px;
   height: 44px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(217, 168, 78, 0.46);
   background: rgba(217, 168, 78, 0.14);
   color: var(--gold);
-  font-size: 22px;
-  font-weight: 700;
+}
+
+.brand-mark svg {
+  width: 34px;
+  height: 34px;
+}
+
+.brand-mark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+}
+
+.brand-mark .mark-sun {
+  fill: rgba(217, 168, 78, 0.2);
+  stroke-width: 1.7;
 }
 
 .brand strong,
@@ -605,9 +623,25 @@ button {
   padding: 10px;
 }
 
+.corpus-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.corpus-note span {
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(241, 234, 216, 0.05);
+}
+
 .doc-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 100px 86px 72px;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.72fr) 132px 64px;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -618,6 +652,11 @@ button {
 
 .doc-row strong {
   color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.doc-category {
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 

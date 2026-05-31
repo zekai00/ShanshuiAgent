@@ -29,6 +29,30 @@ function scoreLabel(item) {
   return Number.isFinite(score) ? score.toFixed(2) : "n/a";
 }
 
+function authorityLabel(level) {
+  const value = String(level || "未评级").trim();
+  const descriptions = {
+    A: "优先引用",
+    "A-": "优先引用",
+    "B+": "辅助核验",
+    B: "辅助核验",
+    C: "背景参考",
+  };
+  return `${value} · ${descriptions[value] || "待核验"}`;
+}
+
+function authorityTitle(level) {
+  const value = String(level || "未评级").trim();
+  const descriptions = {
+    A: "原典、馆藏、核心权威资料，回答时优先采用。",
+    "A-": "权威整理、博物馆或高可信研究资料，回答时优先采用。",
+    "B+": "质量较高的专题研究或学位论文，适合辅助核验。",
+    B: "普通研究资料，适合补充背景，需要交叉核对。",
+    C: "背景参考资料，不宜单独作为关键结论来源。",
+  };
+  return descriptions[value] || "尚未完成权威等级说明。";
+}
+
 function renderMessage(role, content, loading = false) {
   const node = document.createElement("div");
   node.className = `message ${role}${loading ? " loading" : ""}`;
@@ -307,8 +331,8 @@ async function loadCorpus() {
       row.className = "doc-row";
       row.innerHTML = `
         <strong>${escapeHtml(doc.title || doc.source_file)}</strong>
-        <span class="pill">${escapeHtml(doc.authority_level || "n/a")}</span>
-        <span>${escapeHtml(doc.chunk_count || 0)} 块</span>
+        <span class="doc-category">${escapeHtml(doc.category || "未分类")}</span>
+        <span class="pill" title="${escapeHtml(authorityTitle(doc.authority_level))}">${escapeHtml(authorityLabel(doc.authority_level))}</span>
         <span>${escapeHtml(doc.page_count || 0)} 页</span>
       `;
       table.appendChild(row);
@@ -321,12 +345,12 @@ async function loadCorpus() {
 function renderSystem(data) {
   const modelName = (value) => String(value || "未知").split("/").filter(Boolean).pop() || "未知";
   const metrics = [
-    ["Answer Model", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
-    ["Provider", data.answer_provider || "未知"],
-    ["Encoder", modelName(data.retriever_models?.encoder)],
-    ["Reranker", modelName(data.retriever_models?.reranker)],
-    ["Evidence Store", data.evidence_dir ? "已加载" : "未知"],
-    ["Local LoRA", data.trained_researcher_lora_exists ? "存在但未接入前端" : "未发现"],
+    ["回答模型", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
+    ["服务提供方", data.answer_provider || "未知"],
+    ["向量模型", modelName(data.retriever_models?.encoder)],
+    ["重排模型", modelName(data.retriever_models?.reranker)],
+    ["证据库", data.evidence_dir ? "已加载" : "未知"],
+    ["训练模型", data.trained_researcher_lora_exists ? "已存在，当前未用于前端回答" : "未发现"],
   ];
   $("#system-panel").innerHTML = metrics
     .map(([label, value]) => `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)

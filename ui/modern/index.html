@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ChineseLandscape</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260531-1254" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260531-1306" />
   </head>
   <body>
     <canvas id="ink-field" aria-hidden="true"></canvas>
@@ -23,7 +23,13 @@
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark">山</span>
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 44 44" focusable="false">
+              <path class="mark-sun" d="M31 12.5a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" />
+              <path class="mark-ridge" d="M7.5 30.5 16.4 19l6.5 7.8 4.7-5.2 8.9 8.9" />
+              <path class="mark-water" d="M9 34c4.3-1.6 7.6-1.6 11.8 0 4.4 1.6 8 1.6 14.2-.2" />
+            </svg>
+          </span>
           <div>
             <strong>ChineseLandscape</strong>
             <span>Research Console</span>
@@ -91,6 +97,11 @@
             </div>
             <button id="refresh-corpus" class="ghost-button" type="button">刷新</button>
           </header>
+          <div class="corpus-note">
+            <span>A / A-：优先引用</span>
+            <span>B+ / B：辅助核验</span>
+            <span>C：背景参考</span>
+          </div>
           <div id="corpus-table" class="corpus-table"></div>
         </section>
 
@@ -122,6 +133,6 @@
         </div>
       </div>
     </div>
-    <script src="/assets/app.js?v=20260531-1254"></script>
+    <script src="/assets/app.js?v=20260531-1306"></script>
   </body>
 </html>

@@ -123,6 +123,45 @@ def pdf_query_url(route: str, source_file: str | None, page: Any | None = None) 
     return f"{route}?{urlencode(params)}"
 
 
+DOMAIN_KEYWORDS = {
+    "山水", "中国画", "國畫", "国画", "水墨", "青绿", "金碧", "浅绛", "没骨",
+    "皴", "皴法", "笔墨", "设色", "画论", "画史", "画派", "流派", "画家",
+    "绘画", "美术", "构图", "意境", "气韵", "三远", "平远", "高远", "深远",
+    "宋代", "元代", "明代", "清代", "唐代", "五代", "隋代", "北宋", "南宋", "晚明",
+    "宋元", "元明", "明清", "唐宋", "隋唐",
+    "荆浩", "关仝", "董源", "巨然", "范宽", "郭熙", "米芾", "马远", "夏圭",
+    "赵孟頫", "黄公望", "王蒙", "倪瓒", "吴镇", "沈周", "文徵明", "唐寅",
+    "仇英", "董其昌", "四王", "四僧", "石涛", "八大山人", "王时敏", "王鉴",
+    "王翚", "王原祁", "吴门", "浙派", "南宗", "北宗",
+}
+
+
+def is_research_question(question: str) -> bool:
+    normalized = question.strip()
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in DOMAIN_KEYWORDS)
+
+
+def non_research_answer(question: str) -> str:
+    normalized = question.strip()
+    if any(token in normalized for token in {"你好", "您好", "hello", "hi", "嗨"}):
+        return "你好。我主要用于回答中国山水画史、画论、技法、流派和文献证据相关问题。"
+    if "天气" in normalized:
+        return "听起来是个适合看画、读画论或者出门走走的天气。这类闲聊不需要检索山水画文献，所以我不会强行给出来源。"
+    if "什么是爱" in normalized or normalized == "爱是什么":
+        return "这是一般哲学或生活问题，不属于山水画史证据库的范围，我不会牵强引用山水文献。简单说，爱通常包含关切、责任、理解和持续投入。若你想问“山水画如何表达情感”，我可以基于文献证据回答。"
+    return "这个问题看起来不属于中国山水画史、画论、技法或文献证据范围，所以我不会启动 RAG 检索。你可以直接问山水画相关问题，例如“青绿山水是什么”或“董其昌南北宗论的影响是什么”。"
+
+
+def stream_text_answer(answer: str):
+    yield json.dumps({"type": "evidence", "evidence": []}, ensure_ascii=False) + "\n"
+    yield json.dumps({"type": "phase", "phase": "直接回答"}, ensure_ascii=False) + "\n"
+    for index in range(0, len(answer), 24):
+        yield json.dumps({"type": "delta", "delta": answer[index:index + 24]}, ensure_ascii=False) + "\n"
+    yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+
+
 def evidence_payload(doc: dict[str, Any], rank: int) -> dict[str, Any]:
     preview = str(doc.get("raw_chunk_text") or doc.get("contextual_chunk") or "")
     source_file = doc.get("source_file")
@@ -136,6 +175,7 @@ def evidence_payload(doc: dict[str, Any], rank: int) -> dict[str, Any]:
         "title": doc.get("title") or document_meta.get("title"),
         "page_start": page_start,
         "page_end": doc.get("page_end"),
+        "page_count": doc.get("page_count") or document_meta.get("page_count"),
         "rerank_score": doc.get("rerank_score"),
         "evidence_store_hit": doc.get("evidence_store_hit"),
         "corrective_query": doc.get("corrective_query"),
@@ -154,7 +194,7 @@ def build_context(evidence: list[dict[str, Any]]) -> str:
         parts.append(
             "\n".join(
                 [
-                    f"[{doc.get('rank')}] {doc.get('source_file')} | {page_label}",
+                    f"[{doc.get('rank')}] {doc.get('title') or doc.get('source_file')} | {page_label}",
                     str(doc.get("preview", "")),
                 ]
             )
@@ -173,7 +213,7 @@ def build_chat_messages(question: str, evidence: list[dict[str, Any]], history: 
                 "遇到是否类、时代错置、现代技术错置、人物流派混淆问题，先用一句话说明前提问题。"
                 "不要输出“依据与解释：”这类标题。"
                 "正文引用只能使用 [1]、[2] 这种证据编号，不要在正文括号里展开文件名、页码或 chunk_id。"
-                "最后的“来源”部分按编号列出文献名和页码，不要列出 chunk_id。证据不足时明确说明。"
+                "最后的“来源”部分按编号列出文献短标题和页码，不要列出 chunk_id 或冗长文件名。证据不足时明确说明。"
             ),
         }
     ]
@@ -233,6 +273,7 @@ def generate_answer(question: str, evidence: list[dict[str, Any]], history: list
 
 def stream_chat_answer(question: str, evidence: list[dict[str, Any]], history: list[dict[str, str]]):
     yield json.dumps({"type": "evidence", "evidence": evidence}, ensure_ascii=False) + "\n"
+    yield json.dumps({"type": "phase", "phase": "生成中"}, ensure_ascii=False) + "\n"
 
     if not DEEPSEEK_API_KEY:
         answer = fallback_answer(question, evidence)
@@ -291,17 +332,20 @@ def corpus() -> dict[str, Any]:
     if documents_path.exists():
         with documents_path.open("r", encoding="utf-8") as f:
             for line in f:
-                if len(documents) >= 120:
-                    break
                 doc = json.loads(line)
+                facets = doc.get("facets") or {}
                 documents.append(
                     {
                         "source_file": doc.get("source_file"),
                         "title": doc.get("title"),
                         "authority_level": doc.get("authority_level"),
                         "category": doc.get("category"),
-                        "chunk_count": doc.get("chunk_count"),
                         "page_count": doc.get("page_count"),
+                        "facets": {
+                            "dynasties": facets.get("dynasties") or [],
+                            "lineages_schools": facets.get("lineages_schools") or [],
+                            "styles_techniques": facets.get("styles_techniques") or [],
+                        },
                     }
                 )
     return {"manifest": manifest, "documents": documents}
@@ -354,11 +398,13 @@ def retrieve(req: RetrieveRequest) -> dict[str, Any]:
 @app.post("/api/chat")
 def chat(req: ChatRequest) -> dict[str, Any]:
     try:
+        if not is_research_question(req.message):
+            return {"answer": non_research_answer(req.message), "evidence": [], "mode": "direct"}
         retriever = get_retriever(req.top_k, req.final_k)
         results = retriever.retrieve_and_rerank(req.message)
         evidence = [evidence_payload(doc, index + 1) for index, doc in enumerate(results)]
         answer = generate_answer(req.message, evidence, req.history)
-        return {"answer": answer, "evidence": evidence}
+        return {"answer": answer, "evidence": evidence, "mode": "rag"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -366,6 +412,11 @@ def chat(req: ChatRequest) -> dict[str, Any]:
 @app.post("/api/chat/stream")
 def chat_stream(req: ChatRequest) -> StreamingResponse:
     try:
+        if not is_research_question(req.message):
+            return StreamingResponse(
+                stream_text_answer(non_research_answer(req.message)),
+                media_type="application/x-ndjson",
+            )
         retriever = get_retriever(req.top_k, req.final_k)
         results = retriever.retrieve_and_rerank(req.message)
         evidence = [evidence_payload(doc, index + 1) for index, doc in enumerate(results)]

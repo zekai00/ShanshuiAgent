@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ChineseLandscape</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260531-1306" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260531-1314" />
   </head>
   <body>
     <canvas id="ink-field" aria-hidden="true"></canvas>
@@ -54,12 +54,21 @@
               <h1>山水画研究员</h1>
               <p id="runtime-line">RAG evidence chain</p>
             </div>
-            <button id="clear-chat" class="ghost-button" type="button">清空</button>
+            <div class="topbar-actions">
+              <button id="toggle-evidence" class="ghost-button" type="button" aria-expanded="true">隐藏证据</button>
+              <button id="clear-chat" class="ghost-button" type="button">清空</button>
+            </div>
           </header>
 
           <div class="chat-layout">
             <section class="conversation" aria-label="对话记录">
               <div id="messages" class="messages"></div>
+              <div id="example-prompts" class="example-prompts" aria-label="示例问题">
+                <button type="button" data-prompt="青绿山水是什么？">青绿山水是什么？</button>
+                <button type="button" data-prompt="宋代山水画的三远法是什么？">宋代三远法</button>
+                <button type="button" data-prompt="明代吴门画派山水画有什么特点？">吴门画派特点</button>
+                <button type="button" data-prompt="董其昌南北宗论如何影响山水画？">南北宗论影响</button>
+              </div>
               <form id="chat-form" class="composer">
                 <textarea id="chat-input" rows="2" placeholder="输入你的问题"></textarea>
                 <button id="send-button" type="submit">发送</button>
@@ -83,7 +92,7 @@
             </div>
           </header>
           <form id="retrieve-form" class="search-row">
-            <input id="retrieve-input" type="search" placeholder="检索画家、流派、技法或错误前提" />
+            <input id="retrieve-input" type="search" placeholder="检索画家、流派、技法或文献主题" />
             <button type="submit">检索</button>
           </form>
           <div id="retrieve-results" class="result-grid"></div>
@@ -101,6 +110,20 @@
             <span>A / A-：优先引用</span>
             <span>B+ / B：辅助核验</span>
             <span>C：背景参考</span>
+          </div>
+          <div class="corpus-filters" aria-label="语料筛选">
+            <select id="filter-dynasty">
+              <option value="">全部朝代</option>
+            </select>
+            <select id="filter-school">
+              <option value="">全部流派</option>
+            </select>
+            <select id="filter-technique">
+              <option value="">全部技法</option>
+            </select>
+            <select id="filter-authority">
+              <option value="">全部等级</option>
+            </select>
           </div>
           <div id="corpus-table" class="corpus-table"></div>
         </section>
@@ -124,6 +147,8 @@
             <span id="pdf-subtitle">PDF page preview</span>
           </div>
           <div class="pdf-actions">
+            <button id="prev-pdf-page" class="ghost-button" type="button">上一页</button>
+            <button id="next-pdf-page" class="ghost-button" type="button">下一页</button>
             <a id="download-pdf" class="ghost-button" href="#" target="_blank" rel="noreferrer">下载 PDF</a>
             <button id="close-pdf" class="ghost-button" type="button">关闭</button>
           </div>
@@ -133,6 +158,6 @@
         </div>
       </div>
     </div>
-    <script src="/assets/app.js?v=20260531-1306"></script>
+    <script src="/assets/app.js?v=20260531-1314"></script>
   </body>
 </html>

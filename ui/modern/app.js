@@ -32,10 +32,37 @@ function scoreLabel(item) {
 function renderMessage(role, content, loading = false) {
   const node = document.createElement("div");
   node.className = `message ${role}${loading ? " loading" : ""}`;
-  node.textContent = content;
+  if (role === "assistant") {
+    node.innerHTML = renderAnswerHtml(content);
+  } else {
+    node.textContent = content;
+  }
   $("#messages").appendChild(node);
   $("#messages").scrollTop = $("#messages").scrollHeight;
   return node;
+}
+
+function citationButton(rank) {
+  return `<sup><button class="citation-link" type="button" data-evidence-ref="${rank}" title="跳转到证据 ${rank}">[${rank}]</button></sup>`;
+}
+
+function renderAnswerHtml(content) {
+  let html = escapeHtml(content || "");
+  const citations = [];
+  const stashCitation = (rank) => {
+    const token = `@@CITATION_${citations.length}@@`;
+    citations.push(citationButton(rank));
+    return token;
+  };
+  html = html.replace(/[（(]证据\[(\d+)\][：:][^）)]*[）)]/g, (_match, rank) => stashCitation(rank));
+  html = html.replace(/证据\[(\d+)\][：:][^\n。；;]*chunk_id[^\n。；;]*/g, (_match, rank) => stashCitation(rank));
+  html = html.replace(/\[(\d+)\]/g, (_match, rank) => stashCitation(rank));
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\n/g, "<br>");
+  citations.forEach((value, index) => {
+    html = html.replace(`@@CITATION_${index}@@`, value);
+  });
+  return html;
 }
 
 function renderEvidence(target, evidence) {
@@ -47,6 +74,8 @@ function renderEvidence(target, evidence) {
   for (const item of evidence) {
     const node = document.createElement("article");
     node.className = "evidence-item";
+    node.id = `evidence-${item.rank}`;
+    node.dataset.rank = String(item.rank);
     node.innerHTML = `
       <strong>${escapeHtml(item.source_file || item.title || "未知来源")}</strong>
       <div class="evidence-meta">
@@ -100,20 +129,61 @@ async function loadHealth() {
   }
 }
 
+function jumpToEvidence(rank) {
+  switchView("chat");
+  const node = document.querySelector(`#evidence-${CSS.escape(String(rank))}`);
+  if (!node) return;
+  node.scrollIntoView({ behavior: "smooth", block: "center" });
+  node.classList.add("active-evidence");
+  window.setTimeout(() => node.classList.remove("active-evidence"), 1400);
+}
+
+async function readNdjsonStream(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
+  if (buffer.trim()) onEvent(JSON.parse(buffer));
+}
+
 async function sendChat(message) {
   renderMessage("user", message);
   state.history.push({ role: "user", content: message });
   const loadingNode = renderMessage("assistant", "检索中", true);
   $("#send-button").disabled = true;
+  let answer = "";
   try {
-    const data = await fetchJson("/api/chat", {
+    const response = await fetch("/api/chat/stream", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history: state.history, final_k: 5 }),
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `HTTP ${response.status}`);
+    }
     loadingNode.classList.remove("loading");
-    loadingNode.textContent = data.answer || "未生成回答";
-    state.history.push({ role: "assistant", content: loadingNode.textContent });
-    updateEvidence(data.evidence || []);
+    loadingNode.innerHTML = "";
+    await readNdjsonStream(response, (event) => {
+      if (event.type === "evidence") {
+        updateEvidence(event.evidence || []);
+      }
+      if (event.type === "delta") {
+        answer += event.delta || "";
+        loadingNode.innerHTML = renderAnswerHtml(answer);
+        $("#messages").scrollTop = $("#messages").scrollHeight;
+      }
+    });
+    state.history.push({ role: "assistant", content: answer || loadingNode.textContent });
   } catch (error) {
     loadingNode.classList.remove("loading");
     loadingNode.textContent = `请求失败：${error.message}`;
@@ -169,10 +239,12 @@ async function loadCorpus() {
 function renderSystem(data) {
   const manifest = data.manifest || {};
   const metrics = [
-    ["LLM", data.llm_configured ? "可用" : "未配置"],
+    ["Answer Model", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
+    ["Provider", data.answer_provider || "未知"],
     ["Evidence Dir", data.evidence_dir || "未知"],
     ["Documents", manifest.document_count ?? "未知"],
     ["Chunks", manifest.chunk_count ?? "未知"],
+    ["Local LoRA", data.trained_researcher_lora_exists ? "存在但未接入前端" : "未发现"],
   ];
   $("#system-panel").innerHTML = metrics
     .map(([label, value]) => `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
@@ -207,6 +279,10 @@ function setupEvents() {
     $("#messages").innerHTML = "";
   });
   $("#refresh-corpus").addEventListener("click", loadCorpus);
+  $("#messages").addEventListener("click", (event) => {
+    const target = event.target.closest(".citation-link");
+    if (target) jumpToEvidence(target.dataset.evidenceRef);
+  });
 }
 
 function setupInkField() {

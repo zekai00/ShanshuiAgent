@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -23,10 +23,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import (  # noqa: E402
+    BGE_M3_PATH,
     DEEPSEEK_API_KEY,
     DEEPSEEK_BASE_URL,
     FAST_LLM_MODEL,
     PROJECT_ROOT,
+    RERANKER_PATH,
+    RESEARCHER_LORA_PATH,
     RETRIEVAL_EVIDENCE_DIR,
 )
 
@@ -98,6 +101,34 @@ def build_context(evidence: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
+def build_chat_messages(question: str, evidence: list[dict[str, Any]], history: list[dict[str, str]]) -> list[dict[str, str]]:
+    recent_history = history[-6:]
+    messages: list[dict[str, str]] = [
+        {
+            "role": "system",
+            "content": (
+                "你是严谨的中国山水画研究员。只能依据给定证据回答。"
+                "遇到是否类、时代错置、现代技术错置、人物流派混淆问题，先给出“前提判断”。"
+                "回答结构使用：前提判断、依据与解释、来源。"
+                "正文引用只能使用 [1]、[2] 这种证据编号，不要在正文括号里展开文件名、页码或 chunk_id。"
+                "最后的“来源”部分按编号列出文献名、页码和 chunk_id。证据不足时明确说明。"
+            ),
+        }
+    ]
+    for item in recent_history:
+        role = item.get("role")
+        content = item.get("content", "")
+        if role in {"user", "assistant"} and content:
+            messages.append({"role": role, "content": content[:1200]})
+    messages.append(
+        {
+            "role": "user",
+            "content": f"问题：{question}\n\n证据：\n{build_context(evidence)}",
+        }
+    )
+    return messages
+
+
 def load_manifest() -> dict[str, Any]:
     manifest_path = RETRIEVAL_EVIDENCE_DIR / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
@@ -134,35 +165,40 @@ def generate_answer(question: str, evidence: list[dict[str, Any]], history: list
         base_url=DEEPSEEK_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=80.0),
     )
-    recent_history = history[-6:]
-    messages: list[dict[str, str]] = [
-        {
-            "role": "system",
-            "content": (
-                "你是严谨的中国山水画研究员。只能依据给定证据回答。"
-                "遇到是否类、时代错置、现代技术错置、人物流派混淆问题，先给出“前提判断”。"
-                "回答结构使用：前提判断、依据与解释、来源。"
-                "每条事实后尽量标注文献名、页码或 chunk_id。证据不足时明确说明。"
-            ),
-        }
-    ]
-    for item in recent_history:
-        role = item.get("role")
-        content = item.get("content", "")
-        if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": content[:1200]})
-    messages.append(
-        {
-            "role": "user",
-            "content": f"问题：{question}\n\n证据：\n{build_context(evidence)}",
-        }
-    )
     response = client.chat.completions.create(
         model=FAST_LLM_MODEL,
-        messages=messages,
+        messages=build_chat_messages(question, evidence, history),
         temperature=0.2,
     )
     return response.choices[0].message.content or ""
+
+
+def stream_chat_answer(question: str, evidence: list[dict[str, Any]], history: list[dict[str, str]]):
+    yield json.dumps({"type": "evidence", "evidence": evidence}, ensure_ascii=False) + "\n"
+
+    if not DEEPSEEK_API_KEY:
+        answer = fallback_answer(question, evidence)
+        for index in range(0, len(answer), 24):
+            yield json.dumps({"type": "delta", "delta": answer[index:index + 24]}, ensure_ascii=False) + "\n"
+        yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+        return
+
+    client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL,
+        http_client=httpx.Client(proxy=None, trust_env=False, timeout=80.0),
+    )
+    stream = client.chat.completions.create(
+        model=FAST_LLM_MODEL,
+        messages=build_chat_messages(question, evidence, history),
+        temperature=0.2,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        if delta:
+            yield json.dumps({"type": "delta", "delta": delta}, ensure_ascii=False) + "\n"
+    yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
 
 
 @app.get("/")
@@ -176,6 +212,14 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "llm_configured": bool(DEEPSEEK_API_KEY),
+        "answer_model": FAST_LLM_MODEL if DEEPSEEK_API_KEY else "evidence-summary-fallback",
+        "answer_provider": "DeepSeek-compatible API" if DEEPSEEK_API_KEY else "local fallback",
+        "trained_researcher_lora": str(RESEARCHER_LORA_PATH),
+        "trained_researcher_lora_exists": RESEARCHER_LORA_PATH.exists(),
+        "retriever_models": {
+            "encoder": str(BGE_M3_PATH),
+            "reranker": str(RERANKER_PATH),
+        },
         "evidence_dir": str(RETRIEVAL_EVIDENCE_DIR),
         "manifest": manifest,
     }
@@ -224,6 +268,20 @@ def chat(req: ChatRequest) -> dict[str, Any]:
         evidence = [evidence_payload(doc, index + 1) for index, doc in enumerate(results)]
         answer = generate_answer(req.message, evidence, req.history)
         return {"answer": answer, "evidence": evidence}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest) -> StreamingResponse:
+    try:
+        retriever = get_retriever(req.top_k, req.final_k)
+        results = retriever.retrieve_and_rerank(req.message)
+        evidence = [evidence_payload(doc, index + 1) for index, doc in enumerate(results)]
+        return StreamingResponse(
+            stream_chat_answer(req.message, evidence, req.history),
+            media_type="application/x-ndjson",
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

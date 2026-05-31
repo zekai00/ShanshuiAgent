@@ -56,7 +56,7 @@ python scripts/retrieval/build_milvus_from_evidence_store.py
 python scripts/retrieval/smoke_test_retrieval.py
 ```
 
-默认权威语料原始 PDF 位于 `/root/datasets/chinese_landscape_authority_corpus/raw_pdfs`，项目侧 evidence store 位于 `data/processed/authority_evidence`。
+原始 PDF 目录、证据库输出目录和模型路径由本地配置决定；公开 README 不固定任何本机绝对路径。
 
 ### 评测与训练
 
@@ -118,7 +118,7 @@ python scripts/retrieval/build_milvus_from_evidence_store.py
 python scripts/retrieval/smoke_test_retrieval.py
 ```
 
-The default authority PDF corpus is under `/root/datasets/chinese_landscape_authority_corpus/raw_pdfs`, and the project evidence store is under `data/processed/authority_evidence`.
+The raw PDF directory, evidence-store output directory, and model paths are controlled by local configuration; this public README intentionally avoids machine-specific absolute paths.
 
 ### Evaluation And Training
 

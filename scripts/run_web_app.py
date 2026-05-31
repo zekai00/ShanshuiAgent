@@ -48,6 +48,15 @@ _document_map: dict[str, dict[str, Any]] | None = None
 _document_map_lock = threading.Lock()
 
 
+@app.middleware("http")
+async def no_cache_for_local_ui(request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     history: list[dict[str, str]] = Field(default_factory=list)

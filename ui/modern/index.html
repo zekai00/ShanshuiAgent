@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ChineseLandscape</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260531-1551" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260601-0244" />
   </head>
   <body>
     <canvas id="ink-field" aria-hidden="true"></canvas>
@@ -62,12 +62,30 @@
 
           <div class="chat-layout">
             <section class="conversation" aria-label="对话记录">
+              <div id="answer-status" class="answer-status" hidden></div>
               <div id="messages" class="messages"></div>
               <div id="example-prompts" class="example-prompts" aria-label="示例问题">
-                <button type="button" data-prompt="青绿山水是什么？">青绿山水是什么？</button>
-                <button type="button" data-prompt="宋代山水画的三远法是什么？">宋代三远法</button>
-                <button type="button" data-prompt="明代吴门画派山水画有什么特点？">吴门画派特点</button>
-                <button type="button" data-prompt="董其昌南北宗论如何影响山水画？">南北宗论影响</button>
+                <div class="prompt-group">
+                  <span>技法</span>
+                  <button type="button" data-prompt="青绿山水是什么？">青绿山水</button>
+                  <button type="button" data-prompt="皴法在山水画中有什么作用？">皴法</button>
+                  <button type="button" data-prompt="宋代山水画的三远法是什么？">三远法</button>
+                </div>
+                <div class="prompt-group">
+                  <span>朝代</span>
+                  <button type="button" data-prompt="宋元山水画有什么变化？">宋元变化</button>
+                  <button type="button" data-prompt="明清山水画有什么区别？">明清区别</button>
+                </div>
+                <div class="prompt-group">
+                  <span>画家</span>
+                  <button type="button" data-prompt="董其昌南北宗论如何影响山水画？">董其昌</button>
+                  <button type="button" data-prompt="石涛《苦瓜和尚画语录》的山水画观念是什么？">石涛</button>
+                </div>
+                <div class="prompt-group">
+                  <span>作品</span>
+                  <button type="button" data-prompt="《富春山居图》是谁画的？">富春山居图</button>
+                  <button type="button" data-prompt="《千里江山图》属于什么类型的山水画？">千里江山图</button>
+                </div>
               </div>
               <form id="chat-form" class="composer">
                 <textarea id="chat-input" rows="2" placeholder="输入你的问题"></textarea>
@@ -125,7 +143,12 @@
               <option value="">全部等级</option>
             </select>
           </div>
-          <div id="corpus-table" class="corpus-table"></div>
+          <div class="corpus-browser">
+            <div id="corpus-table" class="corpus-table"></div>
+            <aside id="corpus-detail" class="corpus-detail">
+              <div class="empty">选择一篇文献查看详情</div>
+            </aside>
+          </div>
         </section>
 
         <section id="view-system" class="view">
@@ -148,7 +171,11 @@
           </div>
           <div class="pdf-actions">
             <button id="prev-pdf-page" class="ghost-button" type="button">上一页</button>
+            <input id="pdf-page-input" class="page-input" type="number" min="1" value="1" aria-label="跳转页码" />
             <button id="next-pdf-page" class="ghost-button" type="button">下一页</button>
+            <button id="zoom-out-pdf" class="ghost-button" type="button" title="缩小">缩小</button>
+            <button id="zoom-in-pdf" class="ghost-button" type="button" title="放大">放大</button>
+            <button id="fit-pdf" class="ghost-button" type="button">适应宽度</button>
             <a id="download-pdf" class="ghost-button" href="#" target="_blank" rel="noreferrer">下载 PDF</a>
             <button id="close-pdf" class="ghost-button" type="button">关闭</button>
           </div>
@@ -158,6 +185,6 @@
         </div>
       </div>
     </div>
-    <script src="/assets/app.js?v=20260531-1551"></script>
+    <script src="/assets/app.js?v=20260601-0244"></script>
   </body>
 </html>

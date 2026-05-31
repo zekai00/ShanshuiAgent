@@ -459,9 +459,12 @@ def corpus() -> dict[str, Any]:
                     {
                         "source_file": doc.get("source_file"),
                         "title": doc.get("title"),
+                        "author": doc.get("author"),
                         "authority_level": doc.get("authority_level"),
                         "category": doc.get("category"),
+                        "source_type": doc.get("source_type"),
                         "page_count": doc.get("page_count"),
+                        "pdf_url": pdf_query_url("/api/pdf", doc.get("source_file")),
                         "facets": {
                             "dynasties": facets.get("dynasties") or [],
                             "lineages_schools": facets.get("lineages_schools") or [],

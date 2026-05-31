@@ -1,10 +1,14 @@
 const state = {
   history: [],
   evidence: [],
+  citedRanks: new Set(),
   health: null,
   evidenceOpen: true,
   pdfPreview: null,
+  pdfZoom: 1,
+  pdfFit: true,
   corpusDocs: [],
+  selectedCorpusDoc: null,
   corpusFilters: {
     dynasty: "",
     school: "",
@@ -38,6 +42,22 @@ function scoreLabel(item) {
   return Number.isFinite(score) ? score.toFixed(2) : "n/a";
 }
 
+function maxEvidenceScore(evidence) {
+  const scores = (evidence || [])
+    .map((item) => Number(item.rerank_score))
+    .filter((score) => Number.isFinite(score));
+  return scores.length ? Math.max(...scores) : null;
+}
+
+function citationRanksFromText(text) {
+  const ranks = new Set();
+  const content = String(text || "");
+  for (const match of content.matchAll(/\[(\d+)\]/g)) {
+    ranks.add(Number(match[1]));
+  }
+  return ranks;
+}
+
 function shortSourceName(value) {
   let name = String(value || "未知来源").replace(/\.pdf$/i, "");
   name = name.replace(/^[A-Z]\d{2}_/, "");
@@ -62,6 +82,15 @@ function fullSourceTitle(item) {
 function pageImageUrl(sourceFile, page) {
   if (!sourceFile || !page) return "";
   return `/api/pdf-page?source_file=${encodeURIComponent(sourceFile)}&page=${encodeURIComponent(page)}`;
+}
+
+function facetTags(doc) {
+  const facets = doc.facets || {};
+  return [
+    ...(facets.dynasties || []),
+    ...(facets.lineages_schools || []),
+    ...(facets.styles_techniques || []),
+  ].filter(Boolean).slice(0, 8);
 }
 
 function authorityLabel(level) {
@@ -114,8 +143,8 @@ function stripChunkIds(text) {
 function cleanAnswerContent(content) {
   let text = stripChunkIds(String(content || "").replace(/\r\n/g, "\n"));
   text = text.replace(/[A-Z]\d{2}_[^\s，。；;、）)]+?\.pdf/gu, (name) => shortSourceName(name));
-  text = text.replace(/^\s*前提判断[：:]\s*(可以回答|可以作答|问题可以回答|前提正常)[。.]?\s*/u, "");
-  text = text.replace(/^\s*前提判断[：:]\s*/u, "");
+  text = text.replace(/^\s*前提判断[：:][^\n]*(?:\n+|$)/u, "");
+  text = text.replace(/\n\s*前提判断[：:][^\n]*(?=\n|$)/gu, "\n");
   text = text.replace(/^\s*依据与解释[：:]\s*/u, "");
   text = text.replace(/\n\s*依据与解释[：:]\s*/gu, "\n");
   return text.trimStart();
@@ -165,6 +194,26 @@ function renderAnswerHtml(content) {
   return `${bodyHtml}<div class="source-section"><div class="source-title">来源</div>${sourceHtml}</div>`;
 }
 
+function updateAnswerStatus({ phase = "", direct = false } = {}) {
+  const node = $("#answer-status");
+  const evidenceCount = state.evidence.length;
+  const citedCount = state.citedRanks.size;
+  const maxScore = maxEvidenceScore(state.evidence);
+  const parts = [];
+  if (direct || (!evidenceCount && phase === "直接回答")) {
+    parts.push("未检索文献");
+  } else if (evidenceCount) {
+    parts.push(`已检索 ${evidenceCount} 条证据`);
+    parts.push(`引用 ${citedCount} 条`);
+    if (maxScore !== null) parts.push(`最高相关性 ${maxScore.toFixed(2)}`);
+  } else {
+    parts.push("等待检索");
+  }
+  if (phase) parts.push(phase);
+  node.innerHTML = parts.map((part) => `<span>${escapeHtml(part)}</span>`).join("");
+  node.hidden = false;
+}
+
 function renderEvidence(target, evidence) {
   target.innerHTML = "";
   if (!evidence.length) {
@@ -173,7 +222,8 @@ function renderEvidence(target, evidence) {
   }
   for (const item of evidence) {
     const node = document.createElement("article");
-    node.className = "evidence-item";
+    const cited = state.citedRanks.has(Number(item.rank));
+    node.className = `evidence-item${cited ? " cited-evidence" : " unreferenced-evidence"}`;
     node.id = `evidence-${item.rank}`;
     node.dataset.rank = String(item.rank);
     node.evidenceItem = item;
@@ -189,8 +239,12 @@ function renderEvidence(target, evidence) {
         <span>#${escapeHtml(item.rank)}</span>
         <span>${escapeHtml(pageLabel(item))}</span>
         <span>${escapeHtml(scoreLabel(item))}</span>
+        ${cited ? "<span>已引用</span>" : ""}
       </div>
-      <p>${escapeHtml(item.preview || "")}</p>
+      <details class="evidence-preview">
+        <summary>查看证据文本</summary>
+        <p>${escapeHtml(item.preview || "")}</p>
+      </details>
       <div class="evidence-actions">${pageAction}${downloadAction}</div>
     `;
     target.appendChild(node);
@@ -201,6 +255,7 @@ function updateEvidence(evidence) {
   state.evidence = evidence || [];
   $("#evidence-count").textContent = String(state.evidence.length);
   renderEvidence($("#evidence-list"), state.evidence);
+  updateAnswerStatus({ phase: state.evidence.length ? "检索完成" : "直接回答", direct: !state.evidence.length });
 }
 
 function setHealth(ok, text) {
@@ -259,6 +314,9 @@ function renderPdfPreview() {
   image.removeAttribute("src");
   image.src = pageImageUrl(item.source_file, page) || item.page_image_url;
   image.alt = `${sourceTitle(item)} 第 ${page} 页`;
+  image.style.width = state.pdfFit ? "min(100%, 920px)" : `${Math.round(820 * state.pdfZoom)}px`;
+  $("#pdf-page-input").value = String(page);
+  $("#pdf-page-input").max = total ? String(total) : "";
   const download = $("#download-pdf");
   if (item.pdf_url) {
     download.href = item.pdf_url;
@@ -268,6 +326,7 @@ function renderPdfPreview() {
   }
   $("#prev-pdf-page").disabled = page <= 1;
   $("#next-pdf-page").disabled = Boolean(total && page >= total);
+  $("#fit-pdf").textContent = state.pdfFit ? "原始大小" : "适应宽度";
 }
 
 function openPdfPreview(item, page = null) {
@@ -276,6 +335,8 @@ function openPdfPreview(item, page = null) {
     ...item,
     current_page: Number(page || item.page_start || 1),
   };
+  state.pdfZoom = 1;
+  state.pdfFit = true;
   renderPdfPreview();
   $("#pdf-modal").hidden = false;
   document.body.classList.add("modal-open");
@@ -296,6 +357,29 @@ function movePdfPage(delta) {
   const next = current + delta;
   if (next < 1 || (total && next > total)) return;
   item.current_page = next;
+  renderPdfPreview();
+}
+
+function jumpPdfPage(value) {
+  const item = state.pdfPreview;
+  if (!item) return;
+  const total = Number(item.page_count || 0);
+  let page = Number(value);
+  if (!Number.isFinite(page)) return;
+  page = Math.max(1, Math.floor(page));
+  if (total) page = Math.min(total, page);
+  item.current_page = page;
+  renderPdfPreview();
+}
+
+function zoomPdf(delta) {
+  state.pdfFit = false;
+  state.pdfZoom = Math.max(0.55, Math.min(2.4, state.pdfZoom + delta));
+  renderPdfPreview();
+}
+
+function togglePdfFit() {
+  state.pdfFit = !state.pdfFit;
   renderPdfPreview();
 }
 
@@ -328,8 +412,14 @@ async function readNdjsonStream(response, onEvent) {
 async function sendChat(message) {
   renderMessage("user", message);
   $("#example-prompts").classList.add("hidden");
+  state.citedRanks = new Set();
+  state.evidence = [];
+  $("#evidence-count").textContent = "0";
+  renderEvidence($("#evidence-list"), state.evidence);
+  setEvidenceRail(false);
   state.history.push({ role: "user", content: message });
   const loadingNode = renderMessage("assistant", "准备检索", true);
+  updateAnswerStatus({ phase: "准备检索" });
   $("#send-button").disabled = true;
   let answer = "";
   const phaseTimers = [
@@ -355,14 +445,26 @@ async function sendChat(message) {
     await readNdjsonStream(response, (event) => {
       if (event.type === "evidence") {
         updateEvidence(event.evidence || []);
+        if (!(event.evidence || []).length) {
+          setEvidenceRail(false);
+        } else if (!window.matchMedia("(max-width: 980px)").matches) {
+          setEvidenceRail(true);
+        }
       }
       if (event.type === "phase" && !answer) {
         loadingNode.textContent = event.phase || "";
+        updateAnswerStatus({ phase: event.phase || "", direct: !state.evidence.length });
       }
       if (event.type === "delta") {
         answer += event.delta || "";
+        state.citedRanks = citationRanksFromText(answer);
         loadingNode.innerHTML = renderAnswerHtml(answer);
+        renderEvidence($("#evidence-list"), state.evidence);
+        updateAnswerStatus({ phase: "生成中", direct: !state.evidence.length });
         $("#messages").scrollTop = $("#messages").scrollHeight;
+      }
+      if (event.type === "done") {
+        updateAnswerStatus({ phase: "完成", direct: !state.evidence.length });
       }
     });
     state.history.push({ role: "assistant", content: answer || loadingNode.textContent });
@@ -432,6 +534,10 @@ function filteredCorpusDocs() {
 function renderCorpusTable() {
   const table = $("#corpus-table");
   const docs = filteredCorpusDocs();
+  if (state.selectedCorpusDoc && !docs.some((doc) => doc.source_file === state.selectedCorpusDoc.source_file)) {
+    state.selectedCorpusDoc = docs[0] || null;
+    renderCorpusDetail(state.selectedCorpusDoc);
+  }
   $("#corpus-summary").textContent = state.corpusDocs.length
     ? `已显示 ${docs.length} 篇文献`
     : "文献索引已加载";
@@ -442,7 +548,9 @@ function renderCorpusTable() {
   }
   for (const doc of docs) {
     const row = document.createElement("div");
-    row.className = "doc-row";
+    row.className = `doc-row${state.selectedCorpusDoc?.source_file === doc.source_file ? " selected-doc" : ""}`;
+    row.tabIndex = 0;
+    row.docItem = doc;
     row.innerHTML = `
       <strong title="${escapeHtml(doc.source_file || doc.title || "")}">${escapeHtml(doc.title || shortSourceName(doc.source_file))}</strong>
       <span class="doc-category">${escapeHtml(doc.category || "未分类")}</span>
@@ -453,6 +561,34 @@ function renderCorpusTable() {
   }
 }
 
+function renderCorpusDetail(doc) {
+  const target = $("#corpus-detail");
+  if (!doc) {
+    target.innerHTML = '<div class="empty">选择一篇文献查看详情</div>';
+    return;
+  }
+  const tags = facetTags(doc);
+  const download = doc.pdf_url
+    ? `<a class="mini-button" href="${escapeHtml(doc.pdf_url)}" target="_blank" rel="noreferrer">下载 PDF</a>`
+    : "";
+  target.innerHTML = `
+    <article class="doc-detail">
+      <span class="pill" title="${escapeHtml(authorityTitle(doc.authority_level))}">${escapeHtml(authorityLabel(doc.authority_level))}</span>
+      <h2>${escapeHtml(doc.title || shortSourceName(doc.source_file))}</h2>
+      <dl>
+        <div><dt>分类</dt><dd>${escapeHtml(doc.category || "未分类")}</dd></div>
+        <div><dt>作者</dt><dd>${escapeHtml(doc.author || "未标注")}</dd></div>
+        <div><dt>类型</dt><dd>${escapeHtml(doc.source_type || "未标注")}</dd></div>
+        <div><dt>页数</dt><dd>${escapeHtml(doc.page_count || 0)}</dd></div>
+        <div><dt>权威等级说明</dt><dd>${escapeHtml(authorityTitle(doc.authority_level))}</dd></div>
+      </dl>
+      <div class="tag-list">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>暂无标签</span>"}</div>
+      <p title="${escapeHtml(doc.source_file || "")}">${escapeHtml(doc.source_file || "")}</p>
+      <div class="evidence-actions">${download}</div>
+    </article>
+  `;
+}
+
 async function loadCorpus() {
   const table = $("#corpus-table");
   table.innerHTML = '<div class="empty">加载中</div>';
@@ -460,7 +596,9 @@ async function loadCorpus() {
     const data = await fetchJson("/api/corpus");
     state.corpusDocs = data.documents || [];
     populateCorpusFilters(state.corpusDocs);
+    state.selectedCorpusDoc = state.corpusDocs[0] || null;
     renderCorpusTable();
+    renderCorpusDetail(state.selectedCorpusDoc);
   } catch (error) {
     table.innerHTML = `<div class="empty">加载失败：${escapeHtml(error.message)}</div>`;
   }
@@ -468,18 +606,33 @@ async function loadCorpus() {
 
 function renderSystem(data) {
   const modelName = (value) => String(value || "未知").split("/").filter(Boolean).pop() || "未知";
-  const metrics = [
+  const routerText = data.router?.llm_enabled
+    ? `规则 + ${data.router.router_model} + 阈值 ${data.router.min_rerank_score}`
+    : `规则 + 阈值 ${data.router?.min_rerank_score ?? "n/a"}`;
+  const basicMetrics = [
     ["回答模型", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
+    ["证据库", data.evidence_dir ? "已加载" : "未知"],
+    ["路由策略", routerText],
+  ];
+  const diagnostics = [
     ["服务提供方", data.answer_provider || "未知"],
     ["向量模型", modelName(data.retriever_models?.encoder)],
     ["重排模型", modelName(data.retriever_models?.reranker)],
-    ["证据库", data.evidence_dir ? "已加载" : "未知"],
-    ["路由策略", data.router?.llm_enabled ? `规则 + ${data.router.router_model} + 阈值 ${data.router.min_rerank_score}` : `规则 + 阈值 ${data.router?.min_rerank_score ?? "n/a"}`],
     ["训练模型", data.trained_researcher_lora_exists ? "已存在，当前未用于前端回答" : "未发现"],
   ];
-  $("#system-panel").innerHTML = metrics
+  const metricHtml = (items) => items
     .map(([label, value]) => `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
+  $("#system-panel").innerHTML = `
+    <section class="system-section">
+      <h2>运行状态</h2>
+      <div class="metric-grid">${metricHtml(basicMetrics)}</div>
+    </section>
+    <details class="system-section diagnostic-section">
+      <summary>开发诊断</summary>
+      <div class="metric-grid">${metricHtml(diagnostics)}</div>
+    </details>
+  `;
 }
 
 function setEvidenceRail(open) {
@@ -533,8 +686,12 @@ function setupEvents() {
   });
   $("#clear-chat").addEventListener("click", () => {
     state.history = [];
+    state.citedRanks = new Set();
     updateEvidence([]);
     $("#messages").innerHTML = "";
+    $("#answer-status").hidden = true;
+    $("#example-prompts").classList.remove("hidden");
+    renderMessage("assistant", "请输入一个山水画史问题。");
   });
   $("#refresh-corpus").addEventListener("click", loadCorpus);
   [
@@ -548,6 +705,21 @@ function setupEvents() {
       renderCorpusTable();
     });
   });
+  $("#corpus-table").addEventListener("click", (event) => {
+    const row = event.target.closest(".doc-row");
+    if (!row?.docItem) return;
+    state.selectedCorpusDoc = row.docItem;
+    renderCorpusTable();
+    renderCorpusDetail(row.docItem);
+  });
+  $("#corpus-table").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    const row = event.target.closest(".doc-row");
+    if (!row?.docItem) return;
+    state.selectedCorpusDoc = row.docItem;
+    renderCorpusTable();
+    renderCorpusDetail(row.docItem);
+  });
   $("#messages").addEventListener("click", (event) => {
     const target = event.target.closest(".citation-link");
     if (target) jumpToEvidence(target.dataset.evidenceRef);
@@ -557,6 +729,10 @@ function setupEvents() {
   $("#close-pdf").addEventListener("click", closePdfPreview);
   $("#prev-pdf-page").addEventListener("click", () => movePdfPage(-1));
   $("#next-pdf-page").addEventListener("click", () => movePdfPage(1));
+  $("#pdf-page-input").addEventListener("change", (event) => jumpPdfPage(event.target.value));
+  $("#zoom-out-pdf").addEventListener("click", () => zoomPdf(-0.15));
+  $("#zoom-in-pdf").addEventListener("click", () => zoomPdf(0.15));
+  $("#fit-pdf").addEventListener("click", togglePdfFit);
   $("#pdf-modal").addEventListener("click", (event) => {
     if (event.target.id === "pdf-modal") closePdfPreview();
   });
@@ -602,13 +778,12 @@ function setupInkField() {
       if (p.x < -20) p.x = window.innerWidth + 20;
       if (p.x > window.innerWidth + 20) p.x = -20;
 
-      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 10);
-      gradient.addColorStop(0, `rgba(${p.hue}, 0.2)`);
-      gradient.addColorStop(1, `rgba(${p.hue}, 0)`);
-      ctx.fillStyle = gradient;
+      ctx.strokeStyle = `rgba(${p.hue}, 0.14)`;
+      ctx.lineWidth = Math.max(0.6, p.r * 0.5);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * 10, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(p.x - p.r * 8, p.y);
+      ctx.quadraticCurveTo(p.x, p.y + p.r * 2, p.x + p.r * 10, p.y - p.r * 1.4);
+      ctx.stroke();
     }
     requestAnimationFrame(draw);
   }

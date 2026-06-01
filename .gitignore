@@ -16,6 +16,9 @@ generated_images/
 logs/
 *.log
 
+# 内部过程报告、评测记录和本地决策文档
+docs/
+
 # 4. 忽略庞大的 ComfyUI 独立项目环境
 # （建议使用者自行拉取 ComfyUI，或使用 Git Submodule）
 ComfyUI/

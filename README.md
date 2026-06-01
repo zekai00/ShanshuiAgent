@@ -111,7 +111,6 @@ scripts/
   datasets/       权威文献整理、迁入、命名、分类脚本
 ui/modern/        当前 Web 工作台
 workflows/        ComfyUI workflow
-docs/             设计、评测、训练和重构报告
 data/eval/        小型路由校准评测数据
 ```
 
@@ -179,11 +178,9 @@ python scripts/training/build_researcher_sft_dataset.py
 - Web UI 默认依赖 DeepSeek-compatible API；如果没有 API key，会降级为证据摘要或规则回答。
 - 图像生成依赖独立 ComfyUI 服务；服务不可用时，Agent 仍会输出研究卷宗和 prompt，但不会生成图片。
 
-### 推荐阅读
+### Public Repository Scope
 
-- [项目总览](docs/项目总览.md)
-- [LangGraph 版 WebAgent 节点流转与模型 Prompt 说明](docs/20260601-1500-LangGraph版WebAgent节点流转与模型Prompt说明.md)
-- [RAG 证据链路重构报告](docs/20260530-1414-RAG证据链路重构报告.md)
+The public repository keeps code, lightweight evaluation samples, configuration examples, and workflow files. Internal experiment notes, private evaluation reports, local operational logs, and decision records are intentionally excluded from Git.
 
 ## English
 
@@ -261,7 +258,6 @@ python scripts/eval/run_router_threshold_calibration.py
 | `scripts/eval/` | Evaluation scripts |
 | `ui/modern/` | Current Web interface |
 | `workflows/` | ComfyUI workflow files |
-| `docs/` | Project reports and design notes |
 
 ### Status
 

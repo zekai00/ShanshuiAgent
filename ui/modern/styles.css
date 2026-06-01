@@ -108,8 +108,8 @@ button {
 .intro-content h1 {
   margin: 0 0 28px;
   color: var(--text);
-  font-size: clamp(48px, 7rem, 118px);
-  line-height: 0.94;
+  font-size: clamp(40px, 7vw, 82px);
+  line-height: 1.02;
   letter-spacing: 0;
 }
 

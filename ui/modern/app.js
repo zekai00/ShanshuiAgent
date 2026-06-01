@@ -201,14 +201,12 @@ function updateAnswerStatus({ phase = "", direct = false } = {}) {
   const node = $("#answer-status");
   const evidenceCount = state.evidence.length;
   const citedCount = state.citedRanks.size;
-  const maxScore = maxEvidenceScore(state.evidence);
   const parts = [];
   if (direct || (!evidenceCount && phase === "直接回答")) {
     parts.push("未检索文献");
   } else if (evidenceCount) {
     parts.push(`已检索 ${evidenceCount} 条证据`);
     parts.push(`引用 ${citedCount} 条`);
-    if (maxScore !== null) parts.push(`最高相关性 ${maxScore.toFixed(2)}`);
   } else {
     parts.push("等待检索");
   }

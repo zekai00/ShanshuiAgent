@@ -47,6 +47,7 @@ UI_DIR = PROJECT_ROOT / "ui" / "modern"
 PDF_PAGE_CACHE_DIR = PROJECT_ROOT / "data" / "runtime" / "pdf_pages"
 ROUTER_LLM_MODEL = os.getenv("CL_ROUTER_LLM_MODEL", FAST_LLM_MODEL)
 ROUTER_LLM_ENABLED = os.getenv("CL_ROUTER_LLM_ENABLED", "1").lower() not in {"0", "false", "no"}
+AGENT_LLM_ROUTER_ENABLED = os.getenv("CL_AGENT_LLM_ROUTER_ENABLED", "1").lower() not in {"0", "false", "no"}
 RAG_MIN_RERANK_SCORE = float(os.getenv("CL_RAG_MIN_RERANK_SCORE", "1.0"))
 
 app = FastAPI(title="ChineseLandscape Web", version="0.1.0")
@@ -160,7 +161,17 @@ CASUAL_PATTERNS = (
     re.compile(r"什么是爱|爱是什么"),
 )
 
-ROUTE_LABELS = {"domain_research", "casual", "unsupported_general", "need_clarification"}
+ROUTE_LABELS = {
+    "domain_research",
+    "casual",
+    "general_art_qa",
+    "research_qa",
+    "research_then_image",
+    "unsupported_image",
+    "unsupported_general",
+    "need_clarification",
+    "invalid_premise",
+}
 
 
 def route_payload(label: str, reason: str, confidence: float, source: str) -> dict[str, Any]:
@@ -273,15 +284,9 @@ def evidence_is_relevant(evidence: list[dict[str, Any]]) -> bool:
 
 
 def low_relevance_answer(question: str, evidence: list[dict[str, Any]]) -> str:
-    score = evidence[0].get("rerank_score") if evidence else None
-    score_text = ""
-    try:
-        score_text = f"（当前最高相关性分数约为 {float(score):.2f}，低于阈值 {RAG_MIN_RERANK_SCORE:.2f}）"
-    except (TypeError, ValueError):
-        pass
     return (
         "我没有在当前山水画证据库中检索到足够相关的文献证据，因此不生成带来源的研究回答"
-        f"{score_text}。你可以把问题改得更具体，例如补充画家、朝代、作品、流派或技法。\n\n"
+        "。你可以把问题改得更具体，例如补充画家、朝代、作品、流派或技法。\n\n"
         f"原问题：{question}"
     )
 
@@ -300,8 +305,9 @@ AGENT_NODE_TITLES = {
 }
 
 IMAGE_INTENT_PATTERNS = (
-    re.compile(r"(生成|绘制|创作|做|出|画(?!家|派|史|论|法|科|面))\s*(一幅|一张|一个)?[^，。！？\n]{0,24}(山水画|中国画|国画|水墨画|图像|图片|画面|长卷|立轴|斗方)"),
-    re.compile(r"(山水画|中国画|国画|水墨画).*(生成|绘制|创作|出图)"),
+    re.compile(r"(生成|绘制|创作|做|出|搞|弄|画(?!家|派|史|论|法|科|面))\s*(一幅|一张|一个)?[^，。！？\n]{0,30}(山水画|山水图|中国画|国画|水墨画|图像|图片|画面|图|长卷|立轴|斗方)"),
+    re.compile(r"(山水画|山水图|中国画|国画|水墨画).*(生成|绘制|创作|出图|搞|弄|画)"),
+    re.compile(r"(能|可以|可不可以|能不能).{0,12}(画|生成|绘制|创作).{0,12}(类似|这种|这个|那样|同样)"),
     re.compile(r"(image|picture|prompt|comfyui|stable diffusion)", re.IGNORECASE),
 )
 
@@ -313,6 +319,10 @@ ARTIST_TERMS = [
     "赵孟頫", "黄公望", "王蒙", "倪瓒", "吴镇", "沈周", "文徵明", "唐寅", "仇英",
     "董其昌", "石涛", "八大山人", "王时敏", "王鉴", "王翚", "王原祁",
 ]
+GENERAL_ART_TERMS = {
+    "清明上河图", "张择端", "韩熙载夜宴图", "顾闳中", "洛神赋图", "顾恺之",
+    "步辇图", "阎立本", "簪花仕女图", "张萱", "周昉",
+}
 
 
 def event_line(payload: dict[str, Any]) -> str:
@@ -397,16 +407,143 @@ def detect_premise_issue(question: str) -> dict[str, Any] | None:
     return None
 
 
-def build_agent_intake(question: str) -> dict[str, Any]:
-    route = route_question(question)
+AGENT_TASK_TYPES = {
+    "direct",
+    "general_art_qa",
+    "research_qa",
+    "research_then_image",
+    "unsupported_image",
+    "need_clarification",
+    "unsupported_general",
+    "invalid_premise",
+}
+
+
+def compact_history(history: list[dict[str, str]], limit: int = 6) -> str:
+    lines = []
+    for item in history[-limit:]:
+        role = item.get("role")
+        content = str(item.get("content") or "").strip()
+        if role in {"user", "assistant"} and content:
+            lines.append(f"{role}: {content[:500]}")
+    return "\n".join(lines)
+
+
+def history_has_landscape_context(history: list[dict[str, str]]) -> bool:
+    context = compact_history(history, limit=8)
+    if not context:
+        return False
+    if any(keyword in context for keyword in STRONG_DOMAIN_KEYWORDS):
+        return True
+    return any(keyword in context for keyword in {"山水", "中国画", "国画", "水墨", "画派", "画论"})
+
+
+def classify_agent_intake_with_llm(question: str, history: list[dict[str, str]]) -> dict[str, Any] | None:
+    if not (AGENT_LLM_ROUTER_ENABLED and DEEPSEEK_API_KEY):
+        return None
+    client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL,
+        http_client=httpx.Client(proxy=None, trust_env=False, timeout=20.0),
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是山水画研究创作智能体的任务理解器。只输出 JSON，不要解释。"
+                "你必须结合最近对话理解省略和指代，例如“能画一幅类似的吗”“这个也生成一下”。"
+                "task_type 只能是 direct、general_art_qa、research_qa、research_then_image、"
+                "unsupported_image、need_clarification、unsupported_general、invalid_premise。"
+                "research_then_image：用户要画、生成、绘制、搞个、弄个图像/山水图/长卷/类似画，即使说法口语化。"
+                "research_qa：中国山水画史、画论、画家、流派、技法、作品的研究问答，需要文献证据。"
+                "general_art_qa：中国绘画/美术史的简单事实问答但不一定属于山水画证据库，例如《清明上河图》作者。"
+                "direct：寒暄、天气等闲聊。unsupported_general：完全无关的一般生活或百科。"
+                "invalid_premise：把古代人物/画派当成使用 Stable Diffusion、ComfyUI 等现代技术的历史事实；"
+                "但如果用户是让现代系统参考古代风格生成图像，应判为 research_then_image。"
+                "entities 包含 dynasties、schools、techniques、artists、works 五个数组。"
+                "needs_retrieval 和 needs_image 必须是布尔值。confidence 为 0 到 1。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"最近对话：\n{compact_history(history)}\n\n"
+                f"当前用户问题：{question}\n\n"
+                "输出 JSON："
+                "{\"task_type\":\"...\",\"needs_retrieval\":true,\"needs_image\":false,"
+                "\"entities\":{\"dynasties\":[],\"schools\":[],\"techniques\":[],\"artists\":[],\"works\":[]},"
+                "\"reason\":\"不超过30字\",\"confidence\":0.0}"
+            ),
+        },
+    ]
+    try:
+        response = client.chat.completions.create(
+            model=ROUTER_LLM_MODEL,
+            messages=messages,
+            temperature=0,
+            max_tokens=260,
+        )
+        payload = extract_json_object(response.choices[0].message.content or "")
+    except Exception:
+        return None
+    if not payload:
+        return None
+    task_type = str(payload.get("task_type") or "")
+    if task_type not in AGENT_TASK_TYPES:
+        return None
+    entities = payload.get("entities") if isinstance(payload.get("entities"), dict) else {}
+    normalized_entities = {
+        "dynasties": [str(item) for item in entities.get("dynasties", []) if item],
+        "schools": [str(item) for item in entities.get("schools", []) if item],
+        "techniques": [str(item) for item in entities.get("techniques", []) if item],
+        "artists": [str(item) for item in entities.get("artists", []) if item],
+        "works": [str(item) for item in entities.get("works", []) if item],
+    }
+    try:
+        confidence = float(payload.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return {
+        "task_type": task_type,
+        "route": route_payload(
+            "domain_research" if task_type in {"research_qa", "research_then_image"} else task_type,
+            str(payload.get("reason") or "LLM 语义路由"),
+            confidence,
+            "agent_llm",
+        ),
+        "entities": normalized_entities,
+        "needs_retrieval": task_type in {"research_qa", "research_then_image"} or (
+            bool(payload.get("needs_retrieval")) and task_type not in {"general_art_qa", "direct", "unsupported_general"}
+        ),
+        "needs_image": bool(payload.get("needs_image")) or task_type == "research_then_image",
+        "needs_clarification": task_type == "need_clarification",
+        "premise_issue": None,
+        "router": "llm",
+    }
+
+
+def build_rule_agent_intake(question: str) -> dict[str, Any]:
     image_intent = has_image_intent(question)
     entities = extract_entities(question)
     premise_issue = detect_premise_issue(question)
+    general_art = any(term in question for term in GENERAL_ART_TERMS)
+    if general_art and not image_intent:
+        return {
+            "task_type": "general_art_qa",
+            "route": route_payload("general_art_qa", "一般中国绘画史问题", 0.9, "rule"),
+            "entities": entities,
+            "needs_retrieval": False,
+            "needs_image": False,
+            "needs_clarification": False,
+            "premise_issue": premise_issue,
+            "router": "rule",
+        }
+    route = route_question(question)
     domain_research = route["label"] == "domain_research"
     if image_intent and not domain_research and any(term in question for term in {"山水", "国画", "水墨", "中国画"}):
         domain_research = True
     if route["label"] in {"casual", "unsupported_general"} and not image_intent:
-        task_type = "direct"
+        task_type = "general_art_qa" if general_art else "direct"
     elif premise_issue and premise_issue.get("severity") == "invalid_premise":
         task_type = "invalid_premise"
     elif image_intent and domain_research:
@@ -423,12 +560,50 @@ def build_agent_intake(question: str) -> dict[str, Any]:
         "needs_image": task_type in {"research_then_image"},
         "needs_clarification": task_type == "need_clarification",
         "premise_issue": premise_issue,
+        "router": "rule",
     }
+
+
+def build_agent_intake(question: str, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    history = history or []
+    rule_intake = build_rule_agent_intake(question)
+    hard_issue = detect_premise_issue(question)
+    if hard_issue and hard_issue.get("severity") == "invalid_premise":
+        rule_intake["task_type"] = "invalid_premise"
+        rule_intake["needs_retrieval"] = False
+        rule_intake["needs_image"] = False
+        rule_intake["premise_issue"] = hard_issue
+        return rule_intake
+    llm_intake = classify_agent_intake_with_llm(question, history)
+    if has_image_intent(question) and history_has_landscape_context(history):
+        contextual_intake = llm_intake or rule_intake
+        contextual_intake["task_type"] = "research_then_image"
+        contextual_intake["needs_retrieval"] = True
+        contextual_intake["needs_image"] = True
+        contextual_intake["needs_clarification"] = False
+        contextual_intake["premise_issue"] = hard_issue
+        contextual_intake["route"] = route_payload("domain_research", "上下文续问图像创作", 0.92, "contextual_agent")
+        contextual_intake["router"] = "llm_context_guard" if llm_intake else "context_guard"
+        return contextual_intake
+    if rule_intake["task_type"] == "general_art_qa" and (
+        not llm_intake or llm_intake["task_type"] != "research_then_image"
+    ):
+        if llm_intake and llm_intake["task_type"] == "general_art_qa" and llm_intake["route"]["confidence"] >= 0.5:
+            return llm_intake
+        return rule_intake
+    if llm_intake and llm_intake["route"]["confidence"] >= 0.5:
+        llm_intake["premise_issue"] = hard_issue
+        if hard_issue and hard_issue.get("severity") == "needs_evidence":
+            llm_intake["needs_retrieval"] = True
+            if llm_intake["task_type"] in {"direct", "general_art_qa"}:
+                llm_intake["task_type"] = "research_qa"
+        return llm_intake
+    return rule_intake
 
 
 def build_agent_plan(intake: dict[str, Any]) -> list[dict[str, str]]:
     task_type = intake["task_type"]
-    if task_type == "direct":
+    if task_type in {"direct", "general_art_qa"}:
         nodes = [("final_writer", "直接回答闲聊或非研究问题")]
     elif task_type in {"unsupported_image", "need_clarification", "unsupported_general", "invalid_premise"}:
         nodes = [("verifier", "判断边界或错误前提"), ("final_writer", "给出纠偏或澄清建议")]
@@ -897,6 +1072,34 @@ def premise_answer(question: str, issue: dict[str, Any]) -> str:
     )
 
 
+def direct_art_answer(question: str, history: list[dict[str, str]]) -> str:
+    normalized = question.strip()
+    if "清明上河图" in normalized and re.search(r"(谁|作者|画的|创作)", normalized):
+        return "《清明上河图》一般认为是北宋画家张择端创作的。"
+    if not DEEPSEEK_API_KEY:
+        return "这是中国绘画史的一般问题，当前未配置在线模型，无法可靠展开回答。"
+    client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL,
+        http_client=httpx.Client(proxy=None, trust_env=False, timeout=40.0),
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是中国绘画史问答助手。回答一般美术史事实问题，不要伪造文献来源，"
+                "不要使用 [1] 这类引用编号。若问题需要本项目文献证据但当前未检索，应说明只是一般知识回答。"
+            ),
+        },
+        {"role": "user", "content": f"最近对话：\n{compact_history(history)}\n\n当前问题：{question}"},
+    ]
+    try:
+        response = client.chat.completions.create(model=FAST_LLM_MODEL, messages=messages, temperature=0.1, max_tokens=500)
+        return response.choices[0].message.content or ""
+    except Exception:
+        return "这个问题属于一般中国绘画史问题，但当前在线模型调用失败，暂时无法展开。"
+
+
 def unsupported_image_answer(question: str) -> str:
     return (
         "当前图像 Agent 只处理中国山水画相关创作任务。"
@@ -916,7 +1119,7 @@ def stream_agent_answer(req: ChatRequest):
         question = req.message.strip()
         yield event_line({"type": "phase", "phase": "理解任务"})
         yield event_line(node_event("intake", "running", "分析任务类型、领域、图像意图和错误前提"))
-        intake = build_agent_intake(question)
+        intake = build_agent_intake(question, req.history)
         detail = f"{intake['task_type']} / {intake['route']['reason']}"
         yield event_line(node_event("intake", "done", detail, intake))
 
@@ -933,6 +1136,14 @@ def stream_agent_answer(req: ChatRequest):
             yield from stream_final_text(answer)
             yield event_line(node_event("final_writer", "done", "已完成直接回复"))
             yield event_line({"type": "done", "mode": "direct_agent"})
+            return
+
+        if task_type == "general_art_qa":
+            yield event_line(node_event("final_writer", "running", "回答一般中国绘画史问题，不启动文献检索"))
+            answer = direct_art_answer(question, req.history)
+            yield from stream_final_text(answer)
+            yield event_line(node_event("final_writer", "done", "已完成一般美术史回答"))
+            yield event_line({"type": "done", "mode": "general_art_qa"})
             return
 
         if task_type == "unsupported_image":
@@ -981,7 +1192,7 @@ def stream_agent_answer(req: ChatRequest):
             verifier = {
                 "verdict": "low_relevance",
                 "can_continue": False,
-                "reason": "最高相关性分数低于阈值，证据不足。",
+                "reason": "证据相关性不足，无法支撑可靠回答。",
             }
         else:
             verifier = {"verdict": "ok", "can_continue": True, "reason": "证据可用于下一步。"}

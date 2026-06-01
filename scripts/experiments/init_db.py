@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/scripts/experiments/init_db.py
-
 import sqlite3
 import sys
 from pathlib import Path

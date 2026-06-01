@@ -1,4 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/core/bge_m3_engine.py
 import os
 # 这里必须使用智源官方的 FlagEmbedding，LangChain 的不支持三输出
 from FlagEmbedding import BGEM3FlagModel 

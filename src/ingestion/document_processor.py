@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/core/document_processor.py
-
 import os
 import io
 import re

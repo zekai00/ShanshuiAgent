@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/agent/core/tools.py
-
 import random
 import time
 import json
@@ -110,41 +108,10 @@ def generate_landscape_image(prompt: str, width: int = 1024, height: int = 1024)
             return f"获取引擎状态中断。真实报错: {str(e)}"
     return "渲染严重超时，强制终止。"
 
-# @tool("web_search")
-# def web_search(query: str) -> str:
-#     """
-#     当本地画院档案库无法找到答案，或者需要跨领域知识、泛文化背景验证时调用。
-#     """
-#     print(f"\n[🌐 Web Search 工具执行] 检索词: {query}")
-#     url = "https://google.serper.dev/search"
-#     payload = json.dumps({"q": query, "gl": "cn", "hl": "zh-cn"})
-#     headers = {
-#         'X-API-KEY': os.environ.get("SERPER_API_KEY", ""), # 确保 .env 中配置了此项
-#         'Content-Type': 'application/json'
-#     }
-    
-#     try:
-#         response = requests.post(url, headers=headers, data=payload, timeout=10)
-#         response.raise_for_status()
-#         search_data = response.json()
-        
-#         organic_results = search_data.get("organic", [])
-#         if not organic_results:
-#             return "全网检索未发现高度相关的信息。"
-            
-#         formatted_report = "【全网检索结果】\n"
-#         for i, item in enumerate(organic_results[:3]): # 只取前 3 条高质量结果
-#             formatted_report += f"- 来源: {item.get('title')}\n"
-#             formatted_report += f"  摘要: {item.get('snippet')}\n"
-#         return formatted_report
-        
-#     except Exception as e:
-#         return f"网络检索请求失败。真实报错: {str(e)}"
-
 # ==========================================
 # 更新工具白名单
 # ==========================================
 # 🌟 更新工具白名单，只保留核心检索
-researcher_tools = [search_landscape_literature] # 移除了 web_search
+researcher_tools = [search_landscape_literature]
 artist_tools = [generate_landscape_image]
 tools_by_name = {t.name: t for t in (researcher_tools + artist_tools)}

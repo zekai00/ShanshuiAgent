@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/scripts/run_chat_agent.py
-
 import os
 import sys
 import uuid

@@ -1,4 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/core/llm_extractor.py
 import os
 import json
 from openai import OpenAI
@@ -15,29 +14,28 @@ class LocalLLMExtractor:
     def __init__(self, 
                  local_base_url: str = "http://localhost:8000/v1", 
                  local_model: str = "qwen3-4b-instruct",
-                 # 🌟 Kimi (Moonshot) 官方兼容 OpenAI 的 Base URL
-                 api_base_url: str = "https://api.moonshot.cn/v1",  
-                 # 🌟 切换为 Kimi 的 256K 超长上下文模型
-                 api_model: str = "kimi-k2-turbo-preview"):
+                 api_base_url: str | None = None,
+                 api_model: str | None = None):
+        api_base_url = api_base_url or os.environ.get("CL_LONG_CONTEXT_LLM_BASE_URL", "http://localhost:8000/v1")
+        api_model = api_model or os.environ.get("CL_LONG_CONTEXT_LLM_MODEL", "local-long-context-model")
         
-        print(f"[*] 初始化双擎抽取器: 远端长文本引擎 ({api_model}) + 本地切片引擎 ({local_model}) ...")
+        print(f"[*] 初始化双擎抽取器: 长文本引擎 ({api_model}) + 本地切片引擎 ({local_model}) ...")
         
         # 本地 Qwen-4B 客户端 (负责输出结构化 JSON)
         self.local_client = wrappers.wrap_openai(OpenAI(
-            api_key="sk-local-dummy", 
+            api_key=os.environ.get("CL_LOCAL_LLM_API_KEY", "local-dev"),
             base_url=local_base_url, 
             timeout=120.0
         ))
         self.local_model = local_model
         
-        # 🌟 从环境变量获取 KIMI 的 API KEY
-        api_key = os.environ.get("KIMI_API_KEY")
+        api_key = os.environ.get("CL_LONG_CONTEXT_LLM_API_KEY") or os.environ.get("CL_LLM_API_KEY")
         if not api_key:
-            print("[!] 致命警告: 未在环境变量或 .env 中找到 KIMI_API_KEY！远端大纲提取将失败。")
+            print("[!] 未配置长文本 LLM 凭证；远端大纲提取将失败。")
         
-        # 远端 Kimi 客户端 (负责通读 100 页 PDF 提炼大纲)
+        # 长文本客户端负责通读 PDF 并提炼全局大纲。
         self.api_client = wrappers.wrap_openai(OpenAI(
-            api_key=api_key, 
+            api_key=api_key or "not-configured",
             base_url=api_base_url, 
             # 100页 PDF 通读极其耗时，将 Timeout 延长至 10 分钟 (600秒) 以防中断
             timeout=600.0 
@@ -46,7 +44,7 @@ class LocalLLMExtractor:
 
     def generate_global_context(self, full_text: str) -> str:
         """调用超大杯模型，通读全文，提炼全局大纲"""
-        print(f"    [API] 正在呼叫 Kimi 提炼全文 ({len(full_text)} 字符) 的全局大纲...")
+        print(f"    [LLM] 正在提炼全文 ({len(full_text)} 字符) 的全局大纲...")
         try:
             response = self.api_client.chat.completions.create(
                 model=self.api_model,
@@ -58,7 +56,7 @@ class LocalLLMExtractor:
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"    [!] Kimi API 调用失败，降级为空大纲。报错: {e}")
+            print(f"    [!] 长文本 LLM 调用失败，降级为空大纲。报错: {e}")
             return "暂无全局大纲。"
 
     def extract_super_chunk(self, text_chunk: str, global_context: str) -> dict:

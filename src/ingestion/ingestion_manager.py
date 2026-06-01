@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/core/ingestion_manager.py
-
 import os
 import sys
 import json

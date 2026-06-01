@@ -1,12 +1,10 @@
-# /root/Workspace/ShanshuiAgent/src/agent/main_nodes.py
-
 import json
 import yaml
 import httpx
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AIMessage
 
-from src.config import AGENT_PROMPTS_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, FAST_LLM_MODEL
+from src.config import AGENT_PROMPTS_DIR, FAST_LLM_MODEL, LLM_API_KEY, LLM_BASE_URL
 from src.agent.memory.memory_manager import MemoryManager
 
 from .state import AgentState
@@ -20,8 +18,8 @@ proxy_free_client = httpx.Client(proxy=None, trust_env=False)
 # 🚀 极速模型：用于路由、闲聊及简单逻辑判断，关闭思考链
 llm_fast = ChatOpenAI(
     model=FAST_LLM_MODEL,
-    api_key=DEEPSEEK_API_KEY,
-    base_url=DEEPSEEK_BASE_URL,
+    api_key=LLM_API_KEY or "not-configured",
+    base_url=LLM_BASE_URL,
     temperature=0.1,
     http_client=proxy_free_client,
     model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}}

@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/retrieval/online_retrieval.py
-
 import os
 import warnings
 import json

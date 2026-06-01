@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/agent/subgraph_nodes.py
-
 import json
 from langchain_core.messages import SystemMessage, HumanMessage
 # 引入底层 LLM 配置。注意：这里我们特别引入了带思维链的 llm_reason

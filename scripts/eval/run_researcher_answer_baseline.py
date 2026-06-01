@@ -511,7 +511,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--no-judge", action="store_true")
-    parser.add_argument("--judge-model", default="deepseek-chat")
+    parser.add_argument("--judge-model", default=os.environ.get("CL_EVAL_JUDGE_MODEL", "local-chat-model"))
     args = parser.parse_args()
 
     load_dotenv(WORKSPACE_DIR / ".env")
@@ -530,11 +530,11 @@ def main() -> None:
 
     judge_client = None
     if not args.no_judge:
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        api_key = os.environ.get("CL_LLM_API_KEY")
         if not api_key:
-            print("[!] 未找到 DEEPSEEK_API_KEY，本次只做启发式评测。")
+            print("[!] 未找到 CL_LLM_API_KEY，本次只做启发式评测。")
         else:
-            judge_client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+            judge_client = OpenAI(api_key=api_key, base_url=os.environ.get("CL_LLM_BASE_URL", "http://localhost:8000/v1"))
 
     rows: list[dict[str, Any]] = []
     rows.extend(existing.values())

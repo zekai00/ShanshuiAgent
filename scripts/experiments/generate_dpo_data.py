@@ -9,22 +9,23 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import (
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_BASE_URL,
+    FAST_LLM_MODEL,
+    LLM_API_KEY,
+    LLM_BASE_URL,
     LLAMA_FACTORY_DIR,
     RETRIEVAL_FINAL_K,
     RETRIEVAL_TOP_K,
 )
 from src.retrieval.online_retrieval import OnlineHybridRetriever
 
-# 初始化 DeepSeek 客户端
-api_key = DEEPSEEK_API_KEY
+# 初始化兼容 Chat Completions 的客户端
+api_key = LLM_API_KEY
 if not api_key:
-    raise RuntimeError("请先在环境变量中设置 DEEPSEEK_API_KEY，不能在代码中写入 API Key。")
+    raise RuntimeError("请先在环境变量中设置 CL_LLM_API_KEY，不能在代码中写入密钥。")
 
 client = OpenAI(
     api_key=api_key,
-    base_url=DEEPSEEK_BASE_URL,
+    base_url=LLM_BASE_URL,
 )
 
 def generate_responses(query, retrieved_docs):
@@ -43,13 +44,13 @@ def generate_responses(query, retrieved_docs):
 
     try:
         chosen_res = client.chat.completions.create(
-            model="deepseek-chat",
+            model=FAST_LLM_MODEL,
             messages=[{"role": "user", "content": chosen_prompt}],
             temperature=0.3
         ).choices[0].message.content
 
         rejected_res = client.chat.completions.create(
-            model="deepseek-chat",
+            model=FAST_LLM_MODEL,
             messages=[{"role": "user", "content": rejected_prompt}],
             temperature=0.8
         ).choices[0].message.content

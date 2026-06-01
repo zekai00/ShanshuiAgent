@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/scripts/run_ingestion.py
-
 import os
 import sys
 import warnings
@@ -16,12 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# 🌟 2. LangSmith 全局观测配置 (必须在引入其他包之前)
-# 不在代码中写入 API Key；如需启用追踪，请在环境变量中配置 LANGCHAIN_API_KEY。
-if os.environ.get("LANGCHAIN_API_KEY"):
-    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-os.environ.setdefault("LANGCHAIN_PROJECT", "ShanshuiAgent_Offline_Ingestion")
+# 2. 可观测性配置应由部署环境自行注入；公开代码不内置外部服务端点。
 
 # 🌟 3. 从内部工厂提取组装零件
 from src.ingestion.ingestion_manager import IngestionStateManager, LandscapeDatabaseManager

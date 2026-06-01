@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/scripts/run_retrieval_server.py
-
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager

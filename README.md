@@ -55,7 +55,7 @@ flowchart LR
 | 混合检索 | 根据问题召回、重排并返回可追溯证据 | BGE-M3, reranker, Milvus |
 | 图谱增强 | 可选地补充人物、朝代、流派、技法关系 | Neo4j |
 | Agent 编排 | 将任务理解、计划、检索、核验、回答和创作拆成可追踪节点 | LangGraph |
-| 研究回答 | 基于证据生成回答，并保留可点击来源 | DeepSeek-compatible API |
+| 研究回答 | 基于证据生成回答，并保留可点击来源 | Chat Completions endpoint |
 | 图像创作 | 先从文献提炼约束，再生成 ComfyUI/Flux prompt | ComfyUI, Flux workflow |
 | 图像评审 | 检查生成图像是否符合山水画和研究约束 | Qwen3-VL |
 | 评测训练 | 跑检索、回答、路由、错误前提和 SFT 数据构建 | eval scripts, training scripts |
@@ -116,7 +116,7 @@ data/eval/        小型路由校准评测数据
 
 ### 快速启动
 
-> 这个仓库不内置大模型权重、API key 或完整 PDF 语料库。运行前需要准备 `.env`、本地模型路径和自己的文献数据。
+> 这个仓库不内置大模型权重、服务凭证或完整 PDF 语料库。运行前需要准备 `.env`、本地模型路径和自己的文献数据。
 
 ```bash
 pip install -r requirements.txt
@@ -134,7 +134,9 @@ http://127.0.0.1:7861
 
 | 配置项 | 作用 |
 |---|---|
-| `DEEPSEEK_API_KEY` | 研究回答、路由、研究卷宗和 prompt 设计默认使用的在线 LLM |
+| `CL_LLM_API_KEY` | 研究回答、路由、研究卷宗和 prompt 设计使用的通用 LLM 凭证 |
+| `CL_LLM_BASE_URL` | 兼容 Chat Completions 的 LLM 服务地址 |
+| `CL_FAST_LLM_MODEL` | 研究回答和路由使用的模型名 |
 | `CL_BGE_M3_PATH` | BGE-M3 检索编码器路径 |
 | `CL_RERANKER_PATH` | reranker 模型路径 |
 | `CL_RETRIEVAL_EVIDENCE_DIR` | evidence store 目录 |
@@ -175,7 +177,7 @@ python scripts/training/build_researcher_sft_dataset.py
 
 - 这是研究原型，不是开箱即用的云服务。
 - 完整 PDF 语料、Milvus 索引、本地模型和 ComfyUI 权重需要自行准备。
-- Web UI 默认依赖 DeepSeek-compatible API；如果没有 API key，会降级为证据摘要或规则回答。
+- Web UI 默认连接兼容 Chat Completions 的 LLM 服务；如果没有服务凭证，会降级为证据摘要或规则回答。
 - 图像生成依赖独立 ComfyUI 服务；服务不可用时，Agent 仍会输出研究卷宗和 prompt，但不会生成图片。
 
 ### Public Repository Scope
@@ -229,7 +231,7 @@ Then open:
 http://127.0.0.1:7861
 ```
 
-You need to configure your own API keys, local model paths, evidence store, and optional ComfyUI/Neo4j services. This repository does not ship large model weights or a complete production corpus.
+You need to configure your own provider credentials, local model paths, evidence store, and optional ComfyUI/Neo4j services. This repository does not ship large model weights or a complete production corpus.
 
 ### Rebuild Retrieval Indexes
 

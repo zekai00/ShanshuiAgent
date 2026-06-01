@@ -71,16 +71,16 @@ AGENT_CHECKPOINT_DB = _path_env("CL_AGENT_CHECKPOINT_DB", RUNTIME_DIR / "checkpo
 WEB_AGENT_CHECKPOINT_DB = _path_env("CL_WEB_AGENT_CHECKPOINT_DB", RUNTIME_DIR / "web_agent_checkpoints.sqlite")
 USER_MEMORY_DB = _path_env("CL_USER_MEMORY_DB", RUNTIME_DIR / "user_memories.db")
 
-MODELS_DIR = _path_env("CL_MODELS_DIR", "/root/models")
+MODELS_DIR = _path_env("CL_MODELS_DIR", PROJECT_ROOT / "models")
 BGE_M3_PATH = _path_env("CL_BGE_M3_PATH", MODELS_DIR / "bge-m3")
 RERANKER_PATH = _path_env("CL_RERANKER_PATH", MODELS_DIR / "bge-reranker-v2-m3")
 RESEARCHER_BASE_MODEL_PATH = _path_env("CL_RESEARCHER_BASE_MODEL_PATH", MODELS_DIR / "Qwen3.5-9B")
 MODEL_DEVICE = os.getenv("CL_MODEL_DEVICE", os.getenv("CUDA_DEVICE", "cuda:0"))
 SPACY_MODEL_NAME = os.getenv("CL_SPACY_MODEL_NAME", "zh_core_web_sm")
 
-DATASETS_ROOT = _path_env("CL_DATASETS_ROOT", "/root/datasets")
+DATASETS_ROOT = _path_env("CL_DATASETS_ROOT", PROJECT_ROOT / "datasets")
 AUTHORITY_CORPUS_DIR = _path_env("CL_AUTHORITY_CORPUS_DIR", DATASETS_ROOT / "chinese_landscape_authority_corpus")
-LLAMA_FACTORY_DIR = _path_env("CL_LLAMA_FACTORY_DIR", "/root/Workspace/LLaMA-Factory")
+LLAMA_FACTORY_DIR = _path_env("CL_LLAMA_FACTORY_DIR", PROJECT_ROOT.parent / "LLaMA-Factory")
 RESEARCHER_LORA_PATH = _path_env(
     "CL_RESEARCHER_LORA_PATH",
     LLAMA_FACTORY_DIR / "saves" / "Qwen3.5-9B-Base" / "lora" / "train_landscape_sft_v2",
@@ -100,9 +100,9 @@ RETRIEVAL_SERVICE_URL = os.getenv(
 COMFYUI_SERVER_URL = os.getenv("CL_COMFYUI_SERVER_URL", "http://127.0.0.1:8188").rstrip("/")
 COMFYUI_WORKFLOW_PATH = _path_env("CL_COMFYUI_WORKFLOW_PATH", WORKFLOWS_DIR / "flux1_krea_dev-api.json")
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-FAST_LLM_MODEL = os.getenv("CL_FAST_LLM_MODEL", os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"))
+LLM_API_KEY = os.getenv("CL_LLM_API_KEY")
+LLM_BASE_URL = os.getenv("CL_LLM_BASE_URL", "http://localhost:8000/v1").rstrip("/")
+FAST_LLM_MODEL = os.getenv("CL_FAST_LLM_MODEL", "local-chat-model")
 
 NEO4J_URI = os.getenv("NEO4J_URI", os.getenv("CL_NEO4J_URI", "bolt://localhost:7687"))
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", os.getenv("CL_NEO4J_USERNAME", "neo4j"))

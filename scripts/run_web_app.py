@@ -33,10 +33,10 @@ from src.config import (  # noqa: E402
     BGE_M3_PATH,
     COMFYUI_SERVER_URL,
     COMFYUI_WORKFLOW_PATH,
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_BASE_URL,
     FAST_LLM_MODEL,
     GENERATED_IMAGES_DIR,
+    LLM_API_KEY,
+    LLM_BASE_URL,
     PROJECT_ROOT,
     RERANKER_PATH,
     RESEARCHER_LORA_PATH,
@@ -192,11 +192,11 @@ def route_payload(label: str, reason: str, confidence: float, source: str) -> di
 
 
 def classify_question_with_llm(question: str) -> dict[str, Any] | None:
-    if not (ROUTER_LLM_ENABLED and DEEPSEEK_API_KEY):
+    if not (ROUTER_LLM_ENABLED and LLM_API_KEY):
         return None
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=20.0),
     )
     messages = [
@@ -447,11 +447,11 @@ def history_has_landscape_context(history: list[dict[str, str]]) -> bool:
 
 
 def classify_agent_intake_with_llm(question: str, history: list[dict[str, str]]) -> dict[str, Any] | None:
-    if not (AGENT_LLM_ROUTER_ENABLED and DEEPSEEK_API_KEY):
+    if not (AGENT_LLM_ROUTER_ENABLED and LLM_API_KEY):
         return None
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=20.0),
     )
     messages = [
@@ -664,11 +664,11 @@ def fallback_research_brief(question: str, evidence: list[dict[str, Any]], intak
 
 def synthesize_research_brief(question: str, evidence: list[dict[str, Any]], intake: dict[str, Any]) -> dict[str, Any]:
     fallback = fallback_research_brief(question, evidence, intake)
-    if not (DEEPSEEK_API_KEY and evidence):
+    if not (LLM_API_KEY and evidence):
         return fallback
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=60.0),
     )
     messages = [
@@ -728,11 +728,11 @@ def fallback_image_spec(question: str, brief: dict[str, Any]) -> dict[str, Any]:
 
 def design_image_spec(question: str, brief: dict[str, Any]) -> dict[str, Any]:
     fallback = fallback_image_spec(question, brief)
-    if not DEEPSEEK_API_KEY:
+    if not LLM_API_KEY:
         return fallback
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=60.0),
     )
     messages = [
@@ -1192,12 +1192,12 @@ def fallback_answer(question: str, evidence: list[dict[str, Any]]) -> str:
 
 
 def generate_answer(question: str, evidence: list[dict[str, Any]], history: list[dict[str, str]]) -> str:
-    if not DEEPSEEK_API_KEY:
+    if not LLM_API_KEY:
         return fallback_answer(question, evidence)
 
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=80.0),
     )
     response = client.chat.completions.create(
@@ -1209,14 +1209,14 @@ def generate_answer(question: str, evidence: list[dict[str, Any]], history: list
 
 
 def stream_answer_deltas(question: str, evidence: list[dict[str, Any]], history: list[dict[str, str]]):
-    if not DEEPSEEK_API_KEY:
+    if not LLM_API_KEY:
         answer = fallback_answer(question, evidence)
         yield from text_chunks(answer, 24)
         return
 
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=80.0),
     )
     stream = client.chat.completions.create(
@@ -1253,11 +1253,11 @@ def direct_art_answer(question: str, history: list[dict[str, str]]) -> str:
     normalized = question.strip()
     if "清明上河图" in normalized and re.search(r"(谁|作者|画的|创作)", normalized):
         return "《清明上河图》一般认为是北宋画家张择端创作的。"
-    if not DEEPSEEK_API_KEY:
+    if not LLM_API_KEY:
         return "这是中国绘画史的一般问题，当前未配置在线模型，无法可靠展开回答。"
     client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
         http_client=httpx.Client(proxy=None, trust_env=False, timeout=40.0),
     )
     messages = [
@@ -1477,9 +1477,9 @@ def health() -> dict[str, Any]:
     manifest = load_manifest()
     return {
         "ok": True,
-        "llm_configured": bool(DEEPSEEK_API_KEY),
-        "answer_model": FAST_LLM_MODEL if DEEPSEEK_API_KEY else "evidence-summary-fallback",
-        "answer_provider": "DeepSeek-compatible API" if DEEPSEEK_API_KEY else "local fallback",
+        "llm_configured": bool(LLM_API_KEY),
+        "answer_model": FAST_LLM_MODEL if LLM_API_KEY else "evidence-summary-fallback",
+        "answer_provider": "chat-completions endpoint" if LLM_API_KEY else "local fallback",
         "trained_researcher_lora": str(RESEARCHER_LORA_PATH),
         "trained_researcher_lora_exists": RESEARCHER_LORA_PATH.exists(),
         "retriever_models": {
@@ -1488,8 +1488,8 @@ def health() -> dict[str, Any]:
         },
         "evidence_dir": str(RETRIEVAL_EVIDENCE_DIR),
         "router": {
-            "llm_enabled": ROUTER_LLM_ENABLED and bool(DEEPSEEK_API_KEY),
-            "router_model": ROUTER_LLM_MODEL if ROUTER_LLM_ENABLED and DEEPSEEK_API_KEY else "rule-only",
+            "llm_enabled": ROUTER_LLM_ENABLED and bool(LLM_API_KEY),
+            "router_model": ROUTER_LLM_MODEL if ROUTER_LLM_ENABLED and LLM_API_KEY else "rule-only",
             "min_rerank_score": RAG_MIN_RERANK_SCORE,
         },
         "agent": {

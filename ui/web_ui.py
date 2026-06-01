@@ -1,5 +1,3 @@
-# /root/Workspace/ShanshuiAgent/src/ui/web_ui.py
-
 import os
 import sys
 from pathlib import Path
@@ -32,13 +30,7 @@ TRACKING_FILE = INGESTION_STATE_PATH
 COLBERT_FILE = COLBERT_TENSORS_PATH
 
 import io
-# 🌟 Web端交互 LangSmith 监控配置
-# 不在代码中写入 API Key；如需启用追踪，请在环境变量中配置 LANGCHAIN_API_KEY。
-if os.environ.get("LANGCHAIN_API_KEY"):
-    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-# 保持与终端相同的项目名，将所有在线用户的对话汇聚在一个看板中
-os.environ.setdefault("LANGCHAIN_PROJECT", "ShanshuiAgent_Online_Agent")
+# Web 端可观测性配置应由部署环境自行注入；公开代码不内置外部服务端点。
 import re
 import base64  # <--- 新增这行
 import gradio as gr

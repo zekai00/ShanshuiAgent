@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=15, ge=3, le=30)
     final_k: int = Field(default=5, ge=1, le=8)
     user_id: str = Field(default="guest", max_length=80)
+    thread_id: str | None = Field(default=None, max_length=160)
 
 
 class RetrieveRequest(BaseModel):
@@ -162,6 +163,7 @@ CASUAL_PATTERNS = (
 )
 
 ROUTE_LABELS = {
+    "direct",
     "domain_research",
     "casual",
     "general_art_qa",
@@ -1264,6 +1266,32 @@ def stream_agent_answer(req: ChatRequest):
         yield event_line({"type": "done", "mode": "error"})
 
 
+from src.web_agent.dependencies import WebAgentDependencies  # noqa: E402
+from src.web_agent.streaming import stream_web_agent_events  # noqa: E402
+
+
+WEB_AGENT_ENGINE = os.getenv("CL_WEB_AGENT_ENGINE", "langgraph").lower()
+WEB_AGENT_DEPS = WebAgentDependencies(
+    build_agent_intake=build_agent_intake,
+    build_agent_plan=build_agent_plan,
+    get_retriever=get_retriever,
+    evidence_payload=evidence_payload,
+    evidence_is_relevant=evidence_is_relevant,
+    non_research_answer=non_research_answer,
+    direct_art_answer=direct_art_answer,
+    unsupported_image_answer=unsupported_image_answer,
+    premise_answer=premise_answer,
+    low_relevance_answer=low_relevance_answer,
+    stream_answer_deltas=stream_answer_deltas,
+    synthesize_research_brief=synthesize_research_brief,
+    design_image_spec=design_image_spec,
+    generate_image_with_comfyui=generate_image_with_comfyui,
+    critic_image_result=critic_image_result,
+    build_image_final_answer=build_image_final_answer,
+    maybe_write_memory=maybe_write_memory,
+)
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(UI_DIR / "index.html")
@@ -1290,7 +1318,10 @@ def health() -> dict[str, Any]:
             "min_rerank_score": RAG_MIN_RERANK_SCORE,
         },
         "agent": {
-            "mode": "controlled_research_creation_agent",
+            "mode": "langgraph_web_agent" if WEB_AGENT_ENGINE == "langgraph" else "controlled_research_creation_agent",
+            "engine": WEB_AGENT_ENGINE,
+            "checkpointing": WEB_AGENT_ENGINE == "langgraph",
+            "legacy_controlled_agent_available": True,
             "nodes": list(AGENT_NODE_TITLES.keys()),
             "image_generation": {
                 "provider": "ComfyUI",
@@ -1421,7 +1452,19 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
 
 @app.post("/api/agent/stream")
 def agent_stream(req: ChatRequest) -> StreamingResponse:
-    return StreamingResponse(stream_agent_answer(req), media_type="application/x-ndjson")
+    if WEB_AGENT_ENGINE in {"legacy", "controlled", "state_machine"}:
+        iterator = stream_agent_answer(req)
+    else:
+        iterator = stream_web_agent_events(
+            message=req.message,
+            history=req.history,
+            top_k=req.top_k,
+            final_k=req.final_k,
+            user_id=req.user_id,
+            thread_id=req.thread_id,
+            deps=WEB_AGENT_DEPS,
+        )
+    return StreamingResponse(iterator, media_type="application/x-ndjson")
 
 
 def main() -> None:

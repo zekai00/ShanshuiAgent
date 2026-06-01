@@ -9,6 +9,9 @@ const state = {
   pdfFit: true,
   corpusDocs: [],
   selectedCorpusDoc: null,
+  agentTrace: [],
+  imageArtifacts: [],
+  imageSpec: null,
   corpusFilters: {
     dynasty: "",
     school: "",
@@ -214,6 +217,90 @@ function updateAnswerStatus({ phase = "", direct = false } = {}) {
   node.hidden = false;
 }
 
+function setAgentPlan(steps) {
+  state.agentTrace = (steps || []).map((step) => ({
+    node: step.node,
+    title: step.title || step.node,
+    goal: step.goal || "",
+    status: "pending",
+    detail: "",
+  }));
+  renderAgentTrace();
+}
+
+function updateAgentNode(event) {
+  const index = state.agentTrace.findIndex((item) => item.node === event.node);
+  const next = {
+    node: event.node,
+    title: event.title || event.node,
+    goal: index >= 0 ? state.agentTrace[index].goal : "",
+    status: event.status || "running",
+    detail: event.detail || "",
+  };
+  if (index >= 0) {
+    state.agentTrace[index] = { ...state.agentTrace[index], ...next };
+  } else {
+    state.agentTrace.push(next);
+  }
+  renderAgentTrace();
+}
+
+function renderAgentTrace() {
+  const target = $("#agent-trace");
+  if (!state.agentTrace.length) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  target.hidden = false;
+  const items = state.agentTrace.map((step) => `
+    <li class="${escapeHtml(step.status || "pending")}">
+      <span>${escapeHtml(step.title || step.node)}</span>
+      <small>${escapeHtml(step.detail || step.goal || "")}</small>
+    </li>
+  `).join("");
+  target.innerHTML = `<div class="trace-title">Agent 工作流</div><ol>${items}</ol>`;
+}
+
+function renderAgentArtifactsHtml() {
+  const spec = state.imageSpec;
+  const specHtml = spec
+    ? `<details class="image-spec">
+        <summary>图像 Prompt</summary>
+        <dl>
+          <div><dt>尺寸</dt><dd>${escapeHtml(spec.width)} x ${escapeHtml(spec.height)}</dd></div>
+          <div><dt>格式</dt><dd>${escapeHtml(spec.format || "未指定")}</dd></div>
+        </dl>
+        <pre>${escapeHtml(spec.positive_prompt || "")}</pre>
+        <pre>${escapeHtml(spec.negative_prompt || "")}</pre>
+      </details>`
+    : "";
+  const imageHtml = state.imageArtifacts.map((item) => {
+    if (item.status === "success" && item.url) {
+      return `
+        <figure class="generated-image">
+          <img src="${escapeHtml(item.url)}" alt="生成的山水画" />
+          <figcaption>
+            <span>seed ${escapeHtml(item.seed || "")}</span>
+            <a class="mini-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer" download>下载图片</a>
+          </figcaption>
+        </figure>
+      `;
+    }
+    return `
+      <div class="image-error">
+        <strong>图像未生成</strong>
+        <span>${escapeHtml(item.message || "生图引擎未返回图片")}</span>
+      </div>
+    `;
+  }).join("");
+  return specHtml || imageHtml ? `<div class="agent-artifacts">${specHtml}${imageHtml}</div>` : "";
+}
+
+function renderAssistantOutput(node, answer) {
+  node.innerHTML = `${renderAnswerHtml(answer || "")}${renderAgentArtifactsHtml()}`;
+}
+
 function renderEvidence(target, evidence) {
   target.innerHTML = "";
   if (!evidence.length) {
@@ -282,7 +369,7 @@ async function loadHealth() {
     const data = await fetchJson("/health");
     state.health = data;
     setHealth(true, data.llm_configured ? "LLM 已配置" : "证据模式");
-    $("#runtime-line").textContent = "证据页可预览，可下载原始 PDF";
+    $("#runtime-line").textContent = data.agent?.mode ? "Agent：研究、核验、创作、交付" : "证据页可预览，可下载原始 PDF";
     renderSystem(data);
   } catch (error) {
     setHealth(false, "服务异常");
@@ -414,24 +501,28 @@ async function sendChat(message) {
   $("#example-prompts").classList.add("hidden");
   state.citedRanks = new Set();
   state.evidence = [];
+  state.agentTrace = [];
+  state.imageArtifacts = [];
+  state.imageSpec = null;
   $("#evidence-count").textContent = "0";
   renderEvidence($("#evidence-list"), state.evidence);
+  renderAgentTrace();
   setEvidenceRail(false);
   state.history.push({ role: "user", content: message });
-  const loadingNode = renderMessage("assistant", "准备检索", true);
-  updateAnswerStatus({ phase: "准备检索" });
+  const loadingNode = renderMessage("assistant", "准备分析", true);
+  updateAnswerStatus({ phase: "Agent 准备" });
   $("#send-button").disabled = true;
   let answer = "";
   const phaseTimers = [
     window.setTimeout(() => {
-      if (loadingNode.classList.contains("loading")) loadingNode.textContent = "检索中";
+      if (loadingNode.classList.contains("loading")) loadingNode.textContent = "理解任务";
     }, 180),
     window.setTimeout(() => {
-      if (loadingNode.classList.contains("loading")) loadingNode.textContent = "重排中";
+      if (loadingNode.classList.contains("loading")) loadingNode.textContent = "执行计划";
     }, 900),
   ];
   try {
-    const response = await fetch("/api/chat/stream", {
+    const response = await fetch("/api/agent/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history: state.history, final_k: 5 }),
@@ -443,6 +534,13 @@ async function sendChat(message) {
     loadingNode.classList.remove("loading");
     loadingNode.innerHTML = "";
     await readNdjsonStream(response, (event) => {
+      if (event.type === "plan") {
+        setAgentPlan(event.steps || []);
+        updateAnswerStatus({ phase: "计划已生成", direct: !state.evidence.length });
+      }
+      if (event.type === "node") {
+        updateAgentNode(event);
+      }
       if (event.type === "evidence") {
         updateEvidence(event.evidence || []);
         if (!(event.evidence || []).length) {
@@ -451,6 +549,19 @@ async function sendChat(message) {
           setEvidenceRail(true);
         }
       }
+      if (event.type === "brief") {
+        updateAnswerStatus({ phase: "研究卷宗完成", direct: !state.evidence.length });
+      }
+      if (event.type === "image_spec") {
+        state.imageSpec = event.spec || null;
+        renderAssistantOutput(loadingNode, answer);
+        updateAnswerStatus({ phase: "Prompt 已生成", direct: !state.evidence.length });
+      }
+      if (event.type === "image") {
+        state.imageArtifacts.push(event.image || {});
+        renderAssistantOutput(loadingNode, answer);
+        updateAnswerStatus({ phase: "图像生成完成", direct: !state.evidence.length });
+      }
       if (event.type === "phase" && !answer) {
         loadingNode.textContent = event.phase || "";
         updateAnswerStatus({ phase: event.phase || "", direct: !state.evidence.length });
@@ -458,10 +569,14 @@ async function sendChat(message) {
       if (event.type === "delta") {
         answer += event.delta || "";
         state.citedRanks = citationRanksFromText(answer);
-        loadingNode.innerHTML = renderAnswerHtml(answer);
+        renderAssistantOutput(loadingNode, answer);
         renderEvidence($("#evidence-list"), state.evidence);
         updateAnswerStatus({ phase: "生成中", direct: !state.evidence.length });
         $("#messages").scrollTop = $("#messages").scrollHeight;
+      }
+      if (event.type === "error") {
+        answer += `\n请求失败：${event.message || "未知错误"}`;
+        renderAssistantOutput(loadingNode, answer);
       }
       if (event.type === "done") {
         updateAnswerStatus({ phase: "完成", direct: !state.evidence.length });
@@ -611,6 +726,7 @@ function renderSystem(data) {
     : `规则 + 阈值 ${data.router?.min_rerank_score ?? "n/a"}`;
   const basicMetrics = [
     ["回答模型", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
+    ["Agent 模式", data.agent?.mode || "未启用"],
     ["证据库", data.evidence_dir ? "已加载" : "未知"],
     ["路由策略", routerText],
   ];
@@ -618,6 +734,8 @@ function renderSystem(data) {
     ["服务提供方", data.answer_provider || "未知"],
     ["向量模型", modelName(data.retriever_models?.encoder)],
     ["重排模型", modelName(data.retriever_models?.reranker)],
+    ["生图引擎", data.agent?.image_generation?.provider || "未配置"],
+    ["生图工作流", modelName(data.agent?.image_generation?.workflow)],
     ["训练模型", data.trained_researcher_lora_exists ? "已存在，当前未用于前端回答" : "未发现"],
   ];
   const metricHtml = (items) => items
@@ -687,7 +805,11 @@ function setupEvents() {
   $("#clear-chat").addEventListener("click", () => {
     state.history = [];
     state.citedRanks = new Set();
+    state.agentTrace = [];
+    state.imageArtifacts = [];
+    state.imageSpec = null;
     updateEvidence([]);
+    renderAgentTrace();
     $("#messages").innerHTML = "";
     $("#answer-status").hidden = true;
     $("#example-prompts").classList.remove("hidden");

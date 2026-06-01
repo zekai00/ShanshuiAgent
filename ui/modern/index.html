@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ChineseLandscape</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260601-0244" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260601-0318" />
   </head>
   <body>
     <canvas id="ink-field" aria-hidden="true"></canvas>
@@ -31,8 +31,8 @@
             </svg>
           </span>
           <div>
-            <strong>ChineseLandscape</strong>
-            <span>Research Console</span>
+            <strong>ShanshuiResearcher</strong>
+            <span>Agent Console</span>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
@@ -52,7 +52,7 @@
           <header class="topbar">
             <div>
               <h1>山水画研究员</h1>
-              <p id="runtime-line">RAG evidence chain</p>
+              <p id="runtime-line">Controlled research creation agent</p>
             </div>
             <div class="topbar-actions">
               <button id="toggle-evidence" class="ghost-button" type="button" aria-expanded="true">隐藏证据</button>
@@ -63,6 +63,7 @@
           <div class="chat-layout">
             <section class="conversation" aria-label="对话记录">
               <div id="answer-status" class="answer-status" hidden></div>
+              <div id="agent-trace" class="agent-trace" hidden></div>
               <div id="messages" class="messages"></div>
               <div id="example-prompts" class="example-prompts" aria-label="示例问题">
                 <div class="prompt-group">
@@ -85,6 +86,11 @@
                   <span>作品</span>
                   <button type="button" data-prompt="《富春山居图》是谁画的？">富春山居图</button>
                   <button type="button" data-prompt="《千里江山图》属于什么类型的山水画？">千里江山图</button>
+                </div>
+                <div class="prompt-group">
+                  <span>创作</span>
+                  <button type="button" data-prompt="请根据明代吴门画派风格生成一幅江南山水长卷">吴门长卷</button>
+                  <button type="button" data-prompt="请参考青绿山水设色方式生成一幅山水画">青绿创作</button>
                 </div>
               </div>
               <form id="chat-form" class="composer">
@@ -185,6 +191,6 @@
         </div>
       </div>
     </div>
-    <script src="/assets/app.js?v=20260601-0244"></script>
+    <script src="/assets/app.js?v=20260601-0318"></script>
   </body>
 </html>

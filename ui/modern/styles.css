@@ -437,9 +437,85 @@ button {
   font-size: 12px;
 }
 
+.agent-trace {
+  margin: 10px 18px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 10, 9, 0.38);
+}
+
+.agent-trace[hidden] {
+  display: none;
+}
+
+.trace-title {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-trace ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-trace li {
+  position: relative;
+  min-height: 54px;
+  padding: 9px 9px 9px 26px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(241, 234, 216, 0.04);
+}
+
+.agent-trace li::before {
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  content: "";
+  background: var(--muted);
+}
+
+.agent-trace li.running::before {
+  background: var(--gold);
+  box-shadow: 0 0 14px rgba(217, 168, 78, 0.7);
+}
+
+.agent-trace li.done::before {
+  background: var(--teal);
+}
+
+.agent-trace li span,
+.agent-trace li small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.agent-trace li span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-trace li small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .example-prompts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   padding: 0 18px 14px;
 }
@@ -550,6 +626,101 @@ button {
 
 .source-fold div {
   margin-top: 8px;
+}
+
+.agent-artifacts {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.image-spec,
+.generated-image,
+.image-error {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 10, 9, 0.44);
+}
+
+.image-spec {
+  padding: 12px;
+}
+
+.image-spec summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.image-spec dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.image-spec dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.image-spec dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.image-spec dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.image-spec pre {
+  max-height: 180px;
+  margin: 9px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #d9ddcf;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.generated-image {
+  margin: 0;
+  overflow: hidden;
+}
+
+.generated-image img {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  background: #20221d;
+}
+
+.generated-image figcaption,
+.image-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.image-error {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.image-error strong {
+  color: var(--gold);
 }
 
 .composer {

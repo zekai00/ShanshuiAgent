@@ -402,7 +402,7 @@ CLEVELAND_OBJECTS: list[dict[str, Any]] = [
 
 
 def request_json(url: str) -> dict[str, Any]:
-    response = requests.get(url, timeout=TIMEOUT, headers={"User-Agent": "ChineseLandscapeAuthorityCorpus/1.0"})
+    response = requests.get(url, timeout=TIMEOUT, headers={"User-Agent": "ShanshuiAgentAuthorityCorpus/1.0"})
     response.raise_for_status()
     return response.json()
 

@@ -1,1 +1,1 @@
-"""LangGraph-backed web agent for the ChineseLandscape product UI."""
+"""LangGraph-backed web agent for the ShanshuiAgent product UI."""

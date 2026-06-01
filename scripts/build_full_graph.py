@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/scripts/build_full_graph.py
+# /root/Workspace/ShanshuiAgent/scripts/build_full_graph.py
 
 import sys
 from pathlib import Path

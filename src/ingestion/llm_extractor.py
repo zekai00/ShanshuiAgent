@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/src/core/llm_extractor.py
+# /root/Workspace/ShanshuiAgent/src/core/llm_extractor.py
 import os
 import json
 from openai import OpenAI

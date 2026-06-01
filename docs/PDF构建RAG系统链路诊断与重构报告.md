@@ -382,8 +382,8 @@ BGE-M3 sparse_vector 可以做 lexical matching，但它不等价于传统 BM25/
 发现的问题包括：
 
 - `scripts/run_ingestion.py` 中硬编码了 LangSmith API key。
-- `scripts/run_ingestion.py` 使用了不标准 import：`from Workspace.ChineseLandscape.src.retrieval.bge_m3_engine import BGEM3Engine`。
-- 多处绝对路径写死 `/root/Workspace/ChineseLandscape`。
+- `scripts/run_ingestion.py` 使用了不标准 import：`from Workspace.ShanshuiAgent.src.retrieval.bge_m3_engine import BGEM3Engine`。
+- 多处绝对路径写死 `/root/Workspace/ShanshuiAgent`。
 - ingestion、retrieval、agent 之间用字符串拼接格式传递证据，而不是结构化 JSON。
 
 这些不是算法问题，但会影响可复现性、部署和后续维护。

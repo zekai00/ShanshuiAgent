@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/config/prompts/paper_prompts.py
+# /root/Workspace/ShanshuiAgent/config/prompts/paper_prompts.py
 
 # 🌟 全局提取指令 (发给 Kimi-k2 256K 超大杯)
 GLOBAL_SUMMARY_PROMPT = """你是一个权威的中国古典美术史专家与数据架构师。

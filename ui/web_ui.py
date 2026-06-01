@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/src/ui/web_ui.py
+# /root/Workspace/ShanshuiAgent/src/ui/web_ui.py
 
 import os
 import sys
@@ -38,7 +38,7 @@ if os.environ.get("LANGCHAIN_API_KEY"):
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
 # 保持与终端相同的项目名，将所有在线用户的对话汇聚在一个看板中
-os.environ.setdefault("LANGCHAIN_PROJECT", "ChineseLandscape_Online_Agent")
+os.environ.setdefault("LANGCHAIN_PROJECT", "ShanshuiAgent_Online_Agent")
 import re
 import base64  # <--- 新增这行
 import gradio as gr

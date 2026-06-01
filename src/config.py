@@ -1,4 +1,4 @@
-"""Central runtime configuration for ChineseLandscape.
+"""Central runtime configuration for ShanshuiAgent.
 
 The project is often run from scripts, API servers, and notebooks. Keeping
 paths and service endpoints here avoids embedding workstation-specific absolute

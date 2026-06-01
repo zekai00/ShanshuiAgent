@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/scripts/experiments/init_db.py
+# /root/Workspace/ShanshuiAgent/scripts/experiments/init_db.py
 
 import sqlite3
 import sys

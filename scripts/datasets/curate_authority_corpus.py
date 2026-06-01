@@ -49,7 +49,7 @@ README_PATH = DATASET_ROOT / "README.md"
 
 FONT_NAME = "china-s"
 TZ = ZoneInfo("Asia/Shanghai")
-USER_AGENT = "ChineseLandscapeAuthorityCorpus/1.0"
+USER_AGENT = "ShanshuiAgentAuthorityCorpus/1.0"
 
 AUTHORITY_WEIGHTS = {
     "A": 1.25,

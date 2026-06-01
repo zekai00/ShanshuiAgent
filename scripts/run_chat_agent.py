@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/scripts/run_chat_agent.py
+# /root/Workspace/ShanshuiAgent/scripts/run_chat_agent.py
 
 import os
 import sys

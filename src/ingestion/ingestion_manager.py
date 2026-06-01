@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/src/core/ingestion_manager.py
+# /root/Workspace/ShanshuiAgent/src/core/ingestion_manager.py
 
 import os
 import sys

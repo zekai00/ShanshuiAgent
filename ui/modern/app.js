@@ -811,7 +811,7 @@ function setupEvents() {
     $("#messages").innerHTML = "";
     $("#answer-status").hidden = true;
     $("#example-prompts").classList.remove("hidden");
-    renderMessage("assistant", "请输入一个山水画史问题。");
+    renderMessage("assistant", "欢迎使用山水智研。请输入山水画史、画论、技法或创作问题。");
   });
   $("#refresh-corpus").addEventListener("click", loadCorpus);
   [
@@ -921,4 +921,4 @@ setupEvents();
 setupInkField();
 setEvidenceRail(!window.matchMedia("(max-width: 980px)").matches);
 loadHealth();
-renderMessage("assistant", "请输入一个山水画史问题。");
+renderMessage("assistant", "欢迎使用山水智研。请输入山水画史、画论、技法或创作问题。");

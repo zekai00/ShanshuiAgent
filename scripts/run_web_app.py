@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the modern ChineseLandscape web chat interface."""
+"""Run the modern ShanshuiAgent web interface."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ VLM_CRITIC_ENABLED = os.getenv("CL_VLM_CRITIC_ENABLED", "1").lower() not in {"0"
 VLM_CRITIC_PASS_SCORE = float(os.getenv("CL_VLM_CRITIC_PASS_SCORE", "0.65"))
 VLM_CRITIC_MAX_NEW_TOKENS = int(os.getenv("CL_VLM_CRITIC_MAX_NEW_TOKENS", "700"))
 
-app = FastAPI(title="ChineseLandscape Web", version="0.1.0")
+app = FastAPI(title="ShanshuiAgent Web", version="0.1.0")
 app.mount("/assets", StaticFiles(directory=str(UI_DIR)), name="assets")
 GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/generated-images", StaticFiles(directory=str(GENERATED_IMAGES_DIR)), name="generated-images")

@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/scripts/run_ingestion.py
+# /root/Workspace/ShanshuiAgent/scripts/run_ingestion.py
 
 import os
 import sys
@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 if os.environ.get("LANGCHAIN_API_KEY"):
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-os.environ.setdefault("LANGCHAIN_PROJECT", "ChineseLandscape_Offline_Ingestion")
+os.environ.setdefault("LANGCHAIN_PROJECT", "ShanshuiAgent_Offline_Ingestion")
 
 # 🌟 3. 从内部工厂提取组装零件
 from src.ingestion.ingestion_manager import IngestionStateManager, LandscapeDatabaseManager

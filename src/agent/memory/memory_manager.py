@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/src/agent/memory/memory_manager.py
+# /root/Workspace/ShanshuiAgent/src/agent/memory/memory_manager.py
 
 import sqlite3
 import json

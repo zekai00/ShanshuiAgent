@@ -1,4 +1,4 @@
-# /root/Workspace/ChineseLandscape/scripts/run_retrieval_server.py
+# /root/Workspace/ShanshuiAgent/scripts/run_retrieval_server.py
 
 import sys
 from pathlib import Path

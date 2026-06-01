@@ -157,9 +157,10 @@ def make_image_critic_node(deps: WebAgentDependencies):
     def image_critic_node(state: WebAgentState) -> dict[str, Any]:
         image_result = state.get("image_result") or {}
         image_spec = state.get("image_spec") or {}
+        brief = state.get("brief") or {}
         emit_phase("检查图像")
-        emit_node("image_critic", "running", "检查图像文件、生成状态和 prompt 约束")
-        critic = deps.critic_image_result(image_result, image_spec)
+        emit_node("image_critic", "running", "检查图像文件、prompt 约束和 VLM 视觉一致性")
+        critic = deps.critic_image_result(image_result, image_spec, brief)
         detail = "通过" if critic.get("passed") else "；".join(critic.get("issues") or ["未通过"])
         emit_event({"type": "image_critic", "critic": critic})
         emit_node("image_critic", "done", detail, critic)

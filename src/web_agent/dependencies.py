@@ -28,7 +28,7 @@ class WebAgentDependencies:
     synthesize_research_brief: Callable[[str, list[dict[str, Any]], dict[str, Any]], dict[str, Any]]
     design_image_spec: Callable[[str, dict[str, Any]], dict[str, Any]]
     generate_image_with_comfyui: Callable[[dict[str, Any]], dict[str, Any]]
-    critic_image_result: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
+    critic_image_result: Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any]]
     build_image_final_answer: Callable[
         [str, dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]],
         str,

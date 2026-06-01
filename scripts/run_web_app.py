@@ -41,6 +41,7 @@ from src.config import (  # noqa: E402
     RERANKER_PATH,
     RESEARCHER_LORA_PATH,
     RETRIEVAL_EVIDENCE_DIR,
+    VLM_CRITIC_MODEL_PATH,
 )
 
 UI_DIR = PROJECT_ROOT / "ui" / "modern"
@@ -49,6 +50,9 @@ ROUTER_LLM_MODEL = os.getenv("CL_ROUTER_LLM_MODEL", FAST_LLM_MODEL)
 ROUTER_LLM_ENABLED = os.getenv("CL_ROUTER_LLM_ENABLED", "1").lower() not in {"0", "false", "no"}
 AGENT_LLM_ROUTER_ENABLED = os.getenv("CL_AGENT_LLM_ROUTER_ENABLED", "1").lower() not in {"0", "false", "no"}
 RAG_MIN_RERANK_SCORE = float(os.getenv("CL_RAG_MIN_RERANK_SCORE", "1.0"))
+VLM_CRITIC_ENABLED = os.getenv("CL_VLM_CRITIC_ENABLED", "1").lower() not in {"0", "false", "no"}
+VLM_CRITIC_PASS_SCORE = float(os.getenv("CL_VLM_CRITIC_PASS_SCORE", "0.65"))
+VLM_CRITIC_MAX_NEW_TOKENS = int(os.getenv("CL_VLM_CRITIC_MAX_NEW_TOKENS", "700"))
 
 app = FastAPI(title="ChineseLandscape Web", version="0.1.0")
 app.mount("/assets", StaticFiles(directory=str(UI_DIR)), name="assets")
@@ -59,6 +63,8 @@ _retriever = None
 _retriever_lock = threading.Lock()
 _document_map: dict[str, dict[str, Any]] | None = None
 _document_map_lock = threading.Lock()
+_vlm_critic_bundle: dict[str, Any] | None = None
+_vlm_critic_lock = threading.Lock()
 
 
 @app.middleware("http")
@@ -622,7 +628,7 @@ def build_agent_plan(intake: dict[str, Any]) -> list[dict[str, str]]:
             ("research_synthesizer", "整理给画师使用的研究卷宗"),
             ("prompt_designer", "把研究卷宗转成 ComfyUI 图像提示词"),
             ("image_generator", "调用 ComfyUI 生成图像"),
-            ("image_critic", "检查图片文件和关键约束"),
+            ("image_critic", "规则与 VLM 视觉评审"),
             ("final_writer", "交付图像、提示词、证据来源"),
             ("memory_writer", "记录明确的用户偏好"),
         ]
@@ -834,22 +840,181 @@ def generate_image_with_comfyui(spec: dict[str, Any]) -> dict[str, Any]:
     return {"status": "failed", "error_type": "timeout", "message": "ComfyUI 图像生成超时。", "seed": seed}
 
 
-def critic_image_result(image_result: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+def extract_json_payload(text: str) -> dict[str, Any] | None:
+    payload = extract_json_object(text)
+    if payload:
+        return payload
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text or "", flags=re.S)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(1))
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def get_vlm_critic_bundle() -> dict[str, Any]:
+    global _vlm_critic_bundle
+    with _vlm_critic_lock:
+        if _vlm_critic_bundle is not None:
+            return _vlm_critic_bundle
+        if not VLM_CRITIC_MODEL_PATH.exists():
+            raise FileNotFoundError(f"VLM 评审模型不存在：{VLM_CRITIC_MODEL_PATH}")
+
+        from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+        model = Qwen3VLForConditionalGeneration.from_pretrained(
+            str(VLM_CRITIC_MODEL_PATH),
+            torch_dtype="auto",
+            device_map=os.getenv("CL_VLM_CRITIC_DEVICE_MAP", "auto"),
+            local_files_only=True,
+        )
+        processor = AutoProcessor.from_pretrained(str(VLM_CRITIC_MODEL_PATH), local_files_only=True)
+        _vlm_critic_bundle = {"model": model, "processor": processor}
+        return _vlm_critic_bundle
+
+
+def build_vlm_critic_prompt(spec: dict[str, Any], brief: dict[str, Any]) -> str:
+    constraints = brief.get("visual_constraints") or []
+    key_points = brief.get("key_points") or []
+    return (
+        "你是中国山水画生成结果的视觉评审员。请观察图片，并结合给定创作约束进行判断。"
+        "只输出一个 JSON 对象，不要输出 Markdown，不要解释 JSON 之外的文字。\n\n"
+        "评审目标：\n"
+        "1. 判断图像是否像中国山水画，而不是摄影、油画、西方风景或数字插画。\n"
+        "2. 判断是否基本符合研究卷宗中的构图、笔墨、设色、时代/流派约束。\n"
+        "3. 检查是否有现代建筑、文字、水印、logo、明显畸形、低质量伪影。\n"
+        "4. 给出是否建议重新生成，以及应如何修改 prompt。\n\n"
+        f"研究约束：{json.dumps(constraints, ensure_ascii=False)}\n"
+        f"研究依据要点：{json.dumps(key_points[:4], ensure_ascii=False)}\n"
+        f"positive_prompt：{spec.get('positive_prompt')}\n"
+        f"negative_prompt：{spec.get('negative_prompt')}\n\n"
+        "JSON 格式："
+        "{\"passed\":true,\"score\":0.0,\"style_alignment\":\"...\","
+        "\"evidence_alignment\":\"...\",\"issues\":[\"...\"],"
+        "\"retry_recommended\":false,\"prompt_revision_hints\":[\"...\"]}"
+    )
+
+
+def run_vlm_image_critic(image_path: Path, spec: dict[str, Any], brief: dict[str, Any]) -> dict[str, Any]:
+    bundle = get_vlm_critic_bundle()
+    model = bundle["model"]
+    processor = bundle["processor"]
+
+    from qwen_vl_utils import process_vision_info
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": str(image_path)},
+                {"type": "text", "text": build_vlm_critic_prompt(spec, brief)},
+            ],
+        }
+    ]
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(text=[text], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt")
+    device = getattr(model, "device", None)
+    if device is not None and str(device) != "meta":
+        inputs = inputs.to(device)
+    generated_ids = model.generate(
+        **inputs,
+        max_new_tokens=VLM_CRITIC_MAX_NEW_TOKENS,
+        do_sample=False,
+    )
+    generated_ids_trimmed = [
+        output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)
+    ]
+    output = processor.batch_decode(
+        generated_ids_trimmed,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False,
+    )[0]
+    payload = extract_json_payload(output)
+    if not payload:
+        return {
+            "enabled": True,
+            "model": str(VLM_CRITIC_MODEL_PATH),
+            "passed": False,
+            "score": 0.0,
+            "issues": ["VLM 未返回可解析 JSON"],
+            "raw_output": output[:1200],
+            "retry_recommended": False,
+        }
+    try:
+        score = float(payload.get("score", 0.0))
+    except (TypeError, ValueError):
+        score = 0.0
+    return {
+        "enabled": True,
+        "model": str(VLM_CRITIC_MODEL_PATH),
+        "passed": bool(payload.get("passed")) and score >= VLM_CRITIC_PASS_SCORE,
+        "score": max(0.0, min(1.0, score)),
+        "style_alignment": str(payload.get("style_alignment") or ""),
+        "evidence_alignment": str(payload.get("evidence_alignment") or ""),
+        "issues": [str(item) for item in payload.get("issues") or [] if item],
+        "retry_recommended": bool(payload.get("retry_recommended")),
+        "prompt_revision_hints": [str(item) for item in payload.get("prompt_revision_hints") or [] if item],
+        "raw_output": output[:1200],
+    }
+
+
+def critic_image_result(image_result: dict[str, Any], spec: dict[str, Any], brief: dict[str, Any] | None = None) -> dict[str, Any]:
     if image_result.get("status") != "success":
         return {
             "passed": False,
             "issues": [image_result.get("message") or "图像未生成"],
             "retry_recommended": image_result.get("error_type") not in {"comfyui_offline", "workflow_error"},
+            "rule": {"passed": False},
+            "vlm": {"enabled": False, "reason": "图像未生成，跳过 VLM 评审"},
         }
     path = Path(str(image_result.get("path") or ""))
     if not path.exists() or path.stat().st_size == 0:
-        return {"passed": False, "issues": ["图像文件不存在或为空"], "retry_recommended": True}
+        return {
+            "passed": False,
+            "issues": ["图像文件不存在或为空"],
+            "retry_recommended": True,
+            "rule": {"passed": False},
+            "vlm": {"enabled": False, "reason": "图像文件不可用，跳过 VLM 评审"},
+        }
     missing = []
     prompt = str(spec.get("positive_prompt") or "").lower()
     for token in ["chinese", "landscape", "ink"]:
         if token not in prompt:
             missing.append(f"prompt 缺少 {token}")
-    return {"passed": not missing, "issues": missing, "retry_recommended": False}
+    rule_result = {"passed": not missing, "issues": missing}
+    vlm_result: dict[str, Any]
+    if not VLM_CRITIC_ENABLED:
+        vlm_result = {"enabled": False, "reason": "CL_VLM_CRITIC_ENABLED 已关闭"}
+    else:
+        try:
+            vlm_result = run_vlm_image_critic(path, spec, brief or {})
+        except Exception as exc:
+            vlm_result = {
+                "enabled": True,
+                "model": str(VLM_CRITIC_MODEL_PATH),
+                "passed": False,
+                "score": 0.0,
+                "issues": [f"VLM 评审失败：{exc}"],
+                "retry_recommended": False,
+            }
+    issues = list(missing)
+    if vlm_result.get("enabled"):
+        issues.extend(str(item) for item in vlm_result.get("issues") or [] if item)
+    passed = bool(rule_result["passed"])
+    if vlm_result.get("enabled"):
+        passed = passed and bool(vlm_result.get("passed"))
+    retry_recommended = bool(vlm_result.get("retry_recommended")) if vlm_result.get("enabled") else False
+    return {
+        "passed": passed,
+        "score": vlm_result.get("score") if vlm_result.get("enabled") else None,
+        "issues": issues,
+        "retry_recommended": retry_recommended,
+        "rule": rule_result,
+        "vlm": vlm_result,
+    }
 
 
 def source_lines(evidence: list[dict[str, Any]], ranks: list[int] | None = None) -> list[str]:
@@ -885,11 +1050,21 @@ def build_image_final_answer(
     constraints = "\n".join(f"- {item}" for item in brief.get("visual_constraints", [])[:6])
     sources = "\n".join(source_lines(evidence, citations))
     critic_line = "图像检查：通过。" if critic.get("passed") else f"图像检查：{'; '.join(critic.get('issues') or [])}。"
+    vlm = critic.get("vlm") or {}
+    vlm_line = ""
+    if vlm.get("enabled"):
+        score = vlm.get("score")
+        score_text = f"{float(score):.2f}" if isinstance(score, (int, float)) else "未知"
+        vlm_line = (
+            f"\nVLM 视觉评审：{score_text} 分。"
+            f"{vlm.get('style_alignment') or ''}"
+            f"{(' ' + vlm.get('evidence_alignment')) if vlm.get('evidence_alignment') else ''}"
+        )
     return (
         f"{intro}\n\n"
         f"研究依据要点：\n{key_points}\n\n"
         f"创作约束：\n{constraints}\n\n"
-        f"{image_line}\n{critic_line}\n\n"
+        f"{image_line}\n{critic_line}{vlm_line}\n\n"
         f"ComfyUI positive prompt：\n{spec.get('positive_prompt')}\n\n"
         f"negative prompt：\n{spec.get('negative_prompt')}\n\n"
         f"来源：\n{sources}\n\n"
@@ -1328,6 +1503,13 @@ def health() -> dict[str, Any]:
                 "server": COMFYUI_SERVER_URL,
                 "workflow": str(COMFYUI_WORKFLOW_PATH),
                 "generated_images_url": "/generated-images",
+            },
+            "image_critic": {
+                "rule_check": True,
+                "vlm_enabled": VLM_CRITIC_ENABLED,
+                "vlm_model": str(VLM_CRITIC_MODEL_PATH),
+                "vlm_model_exists": VLM_CRITIC_MODEL_PATH.exists(),
+                "pass_score": VLM_CRITIC_PASS_SCORE,
             },
         },
         "manifest": manifest,

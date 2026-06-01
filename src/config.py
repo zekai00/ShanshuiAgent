@@ -85,6 +85,7 @@ RESEARCHER_LORA_PATH = _path_env(
     "CL_RESEARCHER_LORA_PATH",
     LLAMA_FACTORY_DIR / "saves" / "Qwen3.5-9B-Base" / "lora" / "train_landscape_sft_v2",
 )
+VLM_CRITIC_MODEL_PATH = _path_env("CL_VLM_CRITIC_MODEL_PATH", MODELS_DIR / "Qwen3-VL-4B-Instruct")
 
 RETRIEVAL_COLLECTION_NAME = os.getenv("CL_RETRIEVAL_COLLECTION", "landscape_rag")
 RETRIEVAL_TOP_K = _int_env("CL_RETRIEVAL_TOP_K", 15)

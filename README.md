@@ -62,6 +62,15 @@ flowchart LR
 
 ### Agent 工作流
 
+当前主线是 `src/web_agent/` 中的 LangGraph Web Agent。它更准确的范式是：
+
+```text
+证据驱动的 LangGraph 多角色工作流 Agent
+Evidence-grounded LangGraph multi-role workflow agent
+```
+
+它不是一个单 Agent 从头到尾自由循环，也不是 AutoGen 式多个自治 Agent 互相聊天协商；它通过显式状态图把任务拆给固定职责节点。项目中保留的 `src/agent/` 是旧版/实验性命令行多智能体实现，默认 Web 产品链路不以它为主。
+
 ```mermaid
 flowchart TD
     Start((User))
@@ -82,6 +91,8 @@ flowchart TD
     Planner -->|研究后创作| Retriever --> Verifier --> Brief --> Prompt --> Generate --> Critic --> Answer --> Memory
 ```
 
+ReAct 只作为局部工具调用思想存在于旧版 `src/agent/main_nodes.py` 的内部循环中；当前 Web 主链路不是纯 ReAct，而是可追踪、可核验、可评测的图编排工作流。
+
 ### Web UI
 
 当前 Web UI 支持：
@@ -96,6 +107,19 @@ flowchart TD
 | Agent trace | 显示当前任务经过了哪些 LangGraph 节点 |
 | 图像任务 | 支持“先检索研究，再生成山水画”的创作流程 |
 
+### 工程化约束
+
+当前 Web Agent 主链路做了以下工程化收口：
+
+| 约束 | 说明 |
+|---|---|
+| 主线唯一化 | `src/web_agent/` 是当前 Web 产品主线；`src/agent/` 仅作为 legacy CLI 原型保留 |
+| 稳定 schema | `src/web_agent/schemas.py` 固定 intake、plan、evidence、verifier、brief、image spec/result 等节点契约 |
+| 证据核验 | `src/web_agent/verifier.py` 统一处理低相关证据、错误前提、直接影响关系和实体覆盖不足 |
+| 健康检查 | `/health` 返回 LLM、evidence store、Milvus Lite、ColBERT、ComfyUI、VLM critic、Neo4j 等组件状态；`/health?live=1` 才做短超时在线探测 |
+| 异步生图 | 默认 `CL_COMFYUI_ASYNC_ENABLED=1`，图像任务提交后台生成，并通过 `/api/image-jobs/{job_id}` 查询结果；设为 `0` 可恢复同步等待 |
+| 轻量测试 | `tests/web_agent/test_web_agent_smoke.py` 覆盖直接回复、研究问答、低相关拒答、后台生图和实体不匹配拒答 |
+
 ### 项目结构
 
 ```text
@@ -103,7 +127,7 @@ src/
   web_agent/      LangGraph Web Agent 节点、状态、事件流
   retrieval/      在线检索、BGE-M3、reranker、Milvus、Neo4j 集成
   ingestion/      PDF 文本抽取、文献处理、入库链路
-  agent/          旧版/实验性 Agent 代码，当前 Web 主链路不依赖它
+  agent/          旧版/实验性命令行 Agent 代码，当前 Web 主链路不依赖它
 scripts/
   retrieval/      evidence store 和 Milvus 构建脚本
   eval/           检索、回答、路由校准评测脚本

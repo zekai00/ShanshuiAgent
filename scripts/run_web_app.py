@@ -12,6 +12,8 @@ import re
 import sys
 import threading
 import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -37,10 +39,14 @@ from src.config import (  # noqa: E402
     GENERATED_IMAGES_DIR,
     LLM_API_KEY,
     LLM_BASE_URL,
+    NEO4J_PASSWORD,
+    NEO4J_URI,
     PROJECT_ROOT,
     RERANKER_PATH,
+    RETRIEVAL_COLBERT_TENSORS_PATH,
     RESEARCHER_LORA_PATH,
     RETRIEVAL_EVIDENCE_DIR,
+    RETRIEVAL_MILVUS_DB_PATH,
     VLM_CRITIC_MODEL_PATH,
 )
 
@@ -53,6 +59,8 @@ RAG_MIN_RERANK_SCORE = float(os.getenv("CL_RAG_MIN_RERANK_SCORE", "1.0"))
 VLM_CRITIC_ENABLED = os.getenv("CL_VLM_CRITIC_ENABLED", "1").lower() not in {"0", "false", "no"}
 VLM_CRITIC_PASS_SCORE = float(os.getenv("CL_VLM_CRITIC_PASS_SCORE", "0.65"))
 VLM_CRITIC_MAX_NEW_TOKENS = int(os.getenv("CL_VLM_CRITIC_MAX_NEW_TOKENS", "700"))
+COMFYUI_ASYNC_ENABLED = os.getenv("CL_COMFYUI_ASYNC_ENABLED", "1").lower() not in {"0", "false", "no"}
+COMFYUI_JOB_WORKERS = int(os.getenv("CL_COMFYUI_JOB_WORKERS", "1"))
 
 app = FastAPI(title="ShanshuiAgent Web", version="0.1.0")
 app.mount("/assets", StaticFiles(directory=str(UI_DIR)), name="assets")
@@ -65,6 +73,9 @@ _document_map: dict[str, dict[str, Any]] | None = None
 _document_map_lock = threading.Lock()
 _vlm_critic_bundle: dict[str, Any] | None = None
 _vlm_critic_lock = threading.Lock()
+_image_jobs: dict[str, dict[str, Any]] = {}
+_image_jobs_lock = threading.Lock()
+_image_job_executor = ThreadPoolExecutor(max_workers=max(1, COMFYUI_JOB_WORKERS), thread_name_prefix="comfyui-job")
 
 
 @app.middleware("http")
@@ -769,9 +780,7 @@ def generated_image_url(path: Path) -> str:
     return f"/generated-images/{quote(path.name)}"
 
 
-def generate_image_with_comfyui(spec: dict[str, Any]) -> dict[str, Any]:
-    seed = random.randint(1, 2**31 - 1)
-    server = COMFYUI_SERVER_URL.rstrip("/")
+def _comfyui_preflight(server: str) -> dict[str, Any] | None:
     try:
         with httpx.Client(proxy=None, trust_env=False, timeout=2.5) as client:
             client.get(f"{server}/system_stats")
@@ -780,8 +789,73 @@ def generate_image_with_comfyui(spec: dict[str, Any]) -> dict[str, Any]:
             "status": "failed",
             "error_type": "comfyui_offline",
             "message": f"ComfyUI 当前不可用：{exc}",
-            "seed": seed,
         }
+    if not COMFYUI_WORKFLOW_PATH.exists():
+        return {
+            "status": "failed",
+            "error_type": "workflow_missing",
+            "message": f"ComfyUI 工作流不存在：{COMFYUI_WORKFLOW_PATH}",
+        }
+    return None
+
+
+def _set_image_job(job_id: str, payload: dict[str, Any]) -> None:
+    with _image_jobs_lock:
+        current = _image_jobs.get(job_id, {})
+        current.update(payload)
+        current["updated_at"] = time.time()
+        _image_jobs[job_id] = current
+
+
+def _get_image_job(job_id: str) -> dict[str, Any] | None:
+    with _image_jobs_lock:
+        job = _image_jobs.get(job_id)
+        return dict(job) if job else None
+
+
+def _run_image_job(job_id: str, spec: dict[str, Any], seed: int) -> None:
+    _set_image_job(job_id, {"status": "running", "message": "ComfyUI 正在生成图像"})
+    result = _generate_image_with_comfyui_sync(spec, seed=seed, preflight_checked=True)
+    result["job_id"] = job_id
+    _set_image_job(job_id, {"status": result.get("status", "failed"), "image_result": result, "message": result.get("message")})
+
+
+def _queue_image_generation(spec: dict[str, Any], seed: int) -> dict[str, Any]:
+    job_id = uuid.uuid4().hex[:16]
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "seed": seed,
+        "created_at": time.time(),
+        "updated_at": time.time(),
+        "message": "图像任务已提交后台生成。",
+        "image_result": None,
+    }
+    with _image_jobs_lock:
+        _image_jobs[job_id] = job
+    _image_job_executor.submit(_run_image_job, job_id, dict(spec), seed)
+    return {
+        "status": "queued",
+        "job_id": job_id,
+        "seed": seed,
+        "message": "图像任务已提交后台生成，可通过 /api/image-jobs/{job_id} 查询。",
+        "workflow": str(COMFYUI_WORKFLOW_PATH),
+    }
+
+
+def _generate_image_with_comfyui_sync(
+    spec: dict[str, Any],
+    *,
+    seed: int | None = None,
+    preflight_checked: bool = False,
+) -> dict[str, Any]:
+    seed = seed or random.randint(1, 2**31 - 1)
+    server = COMFYUI_SERVER_URL.rstrip("/")
+    if not preflight_checked:
+        preflight_error = _comfyui_preflight(server)
+        if preflight_error:
+            preflight_error["seed"] = seed
+            return preflight_error
     try:
         workflow_data = json.loads(COMFYUI_WORKFLOW_PATH.read_text(encoding="utf-8"))
         workflow_data["68"]["inputs"]["text"] = spec["positive_prompt"]
@@ -838,6 +912,18 @@ def generate_image_with_comfyui(spec: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         return {"status": "failed", "error_type": "comfyui_error", "message": str(exc), "seed": seed}
     return {"status": "failed", "error_type": "timeout", "message": "ComfyUI 图像生成超时。", "seed": seed}
+
+
+def generate_image_with_comfyui(spec: dict[str, Any]) -> dict[str, Any]:
+    seed = random.randint(1, 2**31 - 1)
+    server = COMFYUI_SERVER_URL.rstrip("/")
+    preflight_error = _comfyui_preflight(server)
+    if preflight_error:
+        preflight_error["seed"] = seed
+        return preflight_error
+    if COMFYUI_ASYNC_ENABLED:
+        return _queue_image_generation(spec, seed)
+    return _generate_image_with_comfyui_sync(spec, seed=seed, preflight_checked=True)
 
 
 def extract_json_payload(text: str) -> dict[str, Any] | None:
@@ -962,6 +1048,14 @@ def run_vlm_image_critic(image_path: Path, spec: dict[str, Any], brief: dict[str
 
 
 def critic_image_result(image_result: dict[str, Any], spec: dict[str, Any], brief: dict[str, Any] | None = None) -> dict[str, Any]:
+    if image_result.get("status") in {"queued", "running"}:
+        return {
+            "passed": False,
+            "issues": [image_result.get("message") or "图像任务仍在后台生成，暂未执行视觉评审"],
+            "retry_recommended": False,
+            "rule": {"passed": False, "reason": "queued"},
+            "vlm": {"enabled": False, "reason": "图像尚未生成，跳过 VLM 评审"},
+        }
     if image_result.get("status") != "success":
         return {
             "passed": False,
@@ -1043,6 +1137,12 @@ def build_image_final_answer(
     if image_result.get("status") == "success":
         intro = f"已完成图像生成。创作方案基于检索到的山水画文献约束 {citation_text}。"
         image_line = f"图像文件：{image_result.get('filename')}，seed：{image_result.get('seed')}。"
+    elif image_result.get("status") in {"queued", "running"}:
+        intro = f"已完成研究、图像方案和 Prompt 设计，并已提交后台生图任务 {citation_text}。"
+        image_line = (
+            f"生图任务：{image_result.get('job_id')}，seed：{image_result.get('seed')}。"
+            "图像完成后可通过系统轮询结果查看。"
+        )
     else:
         intro = "已完成研究、图像方案和 Prompt 设计，但当前 ComfyUI 生图引擎不可用，所以没有实际生成图片。"
         image_line = f"生图状态：{image_result.get('message') or '未生成'}。"
@@ -1359,30 +1459,27 @@ def stream_agent_answer(req: ChatRequest):
 
         yield event_line({"type": "phase", "phase": "核验证据"})
         yield event_line(node_event("verifier", "running", "检查相关性、错误前提和是否需要拒答"))
-        if intake.get("premise_issue") and intake["premise_issue"].get("severity") == "needs_evidence" and not evidence_is_relevant(evidence):
-            verifier = {
-                "verdict": "insufficient_evidence_for_direct_influence",
-                "can_continue": False,
-                "reason": intake["premise_issue"]["message"],
-            }
-        elif intake.get("needs_retrieval") and not evidence_is_relevant(evidence):
-            verifier = {
-                "verdict": "low_relevance",
-                "can_continue": False,
-                "reason": "证据相关性不足，无法支撑可靠回答。",
-            }
-        else:
-            verifier = {"verdict": "ok", "can_continue": True, "reason": "证据可用于下一步。"}
+        verifier = verify_agent_state(
+            question=question,
+            intake=intake,
+            evidence=evidence,
+            top_evidence_relevant=evidence_is_relevant(evidence),
+        )
         yield event_line(node_event("verifier", "done", verifier["reason"], verifier))
 
         if not verifier["can_continue"]:
             yield event_line(node_event("final_writer", "running", "说明证据不足或前提风险"))
             if verifier["verdict"] == "low_relevance":
                 answer = low_relevance_answer(question, evidence)
-            else:
+            elif verifier["verdict"] == "insufficient_evidence_for_direct_influence":
                 answer = (
                     f"当前资料库证据不足以支持这个直接影响关系：{verifier['reason']}\n\n"
                     "我不会默认该前提成立。建议改问具体的比较问题，例如比较构图、色彩或笔触，而不是直接师承关系。"
+                )
+            else:
+                answer = (
+                    f"当前资料库证据不足以支撑可靠回答：{verifier['reason']}\n\n"
+                    "建议补充更明确的画家、作品、时代、流派或技法，或先扩大语料后再检索。"
                 )
             yield from stream_final_text(answer)
             yield event_line(node_event("final_writer", "done", "已完成证据不足回复"))
@@ -1419,7 +1516,7 @@ def stream_agent_answer(req: ChatRequest):
 
         yield event_line({"type": "phase", "phase": "检查图像"})
         yield event_line(node_event("image_critic", "running", "检查图像文件、生成状态和 prompt 约束"))
-        critic = critic_image_result(image_result, image_spec)
+        critic = critic_image_result(image_result, image_spec, brief)
         critic_detail = "通过" if critic.get("passed") else "；".join(critic.get("issues") or ["未通过"])
         yield event_line({"type": "image_critic", "critic": critic})
         yield event_line(node_event("image_critic", "done", critic_detail, critic))
@@ -1443,6 +1540,7 @@ def stream_agent_answer(req: ChatRequest):
 
 from src.web_agent.dependencies import WebAgentDependencies  # noqa: E402
 from src.web_agent.streaming import stream_web_agent_events  # noqa: E402
+from src.web_agent.verifier import verify_agent_state  # noqa: E402
 
 
 WEB_AGENT_ENGINE = os.getenv("CL_WEB_AGENT_ENGINE", "langgraph").lower()
@@ -1467,14 +1565,99 @@ WEB_AGENT_DEPS = WebAgentDependencies(
 )
 
 
+def path_component(path: Path, *, required: bool = True) -> dict[str, Any]:
+    exists = path.exists()
+    if path.is_dir():
+        kind = "directory"
+    elif path.is_file():
+        kind = "file"
+    else:
+        kind = "missing"
+    return {
+        "status": "ok" if exists else ("missing" if required else "optional_missing"),
+        "path": str(path),
+        "exists": exists,
+        "kind": kind,
+    }
+
+
+def http_component(name: str, url: str, *, live: bool, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    component = {"status": "configured", "name": name, "url": url, "live_checked": False}
+    if not live:
+        return component
+    component["live_checked"] = True
+    try:
+        with httpx.Client(proxy=None, trust_env=False, timeout=2.5, headers=headers) as client:
+            response = client.get(url)
+        component["status"] = "ok" if response.status_code < 500 else "error"
+        component["http_status"] = response.status_code
+    except Exception as exc:
+        component["status"] = "error"
+        component["error"] = str(exc)
+    return component
+
+
+def build_component_health(live: bool = False) -> dict[str, Any]:
+    evidence_files = {
+        "manifest": path_component(RETRIEVAL_EVIDENCE_DIR / "manifest.json"),
+        "documents": path_component(RETRIEVAL_EVIDENCE_DIR / "documents.jsonl"),
+        "chunks": path_component(RETRIEVAL_EVIDENCE_DIR / "chunks.jsonl"),
+    }
+    components = {
+        "llm": {
+            "status": "configured" if LLM_API_KEY else "fallback",
+            "model": FAST_LLM_MODEL if LLM_API_KEY else "evidence-summary-fallback",
+            "base_url": LLM_BASE_URL,
+            "live": http_component(
+                "llm",
+                f"{LLM_BASE_URL}/models",
+                live=live and bool(LLM_API_KEY),
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else None,
+            ),
+        },
+        "evidence_store": {
+            "status": "ok" if all(item["exists"] for item in evidence_files.values()) else "missing",
+            "directory": str(RETRIEVAL_EVIDENCE_DIR),
+            "files": evidence_files,
+        },
+        "retrieval_index": {
+            "milvus_lite": path_component(RETRIEVAL_MILVUS_DB_PATH),
+            "colbert_tensors": path_component(RETRIEVAL_COLBERT_TENSORS_PATH, required=False),
+            "encoder": path_component(BGE_M3_PATH),
+            "reranker": path_component(RERANKER_PATH),
+        },
+        "comfyui": {
+            "async_enabled": COMFYUI_ASYNC_ENABLED,
+            "workers": max(1, COMFYUI_JOB_WORKERS),
+            "workflow": path_component(COMFYUI_WORKFLOW_PATH),
+            "service": http_component("comfyui", f"{COMFYUI_SERVER_URL.rstrip('/')}/system_stats", live=live),
+        },
+        "vlm_critic": {
+            "enabled": VLM_CRITIC_ENABLED,
+            "model": path_component(VLM_CRITIC_MODEL_PATH, required=VLM_CRITIC_ENABLED),
+            "pass_score": VLM_CRITIC_PASS_SCORE,
+        },
+        "neo4j": {
+            "status": "configured" if NEO4J_PASSWORD else "disabled_or_no_password",
+            "uri": NEO4J_URI,
+        },
+        "image_jobs": {
+            "queued_or_recent": len(_image_jobs),
+            "workers": max(1, COMFYUI_JOB_WORKERS),
+        },
+    }
+    return components
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(UI_DIR / "index.html")
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(live: bool = Query(default=False)) -> dict[str, Any]:
     manifest = load_manifest()
+    components = build_component_health(live=live)
     return {
         "ok": True,
         "llm_configured": bool(LLM_API_KEY),
@@ -1502,6 +1685,8 @@ def health() -> dict[str, Any]:
                 "provider": "ComfyUI",
                 "server": COMFYUI_SERVER_URL,
                 "workflow": str(COMFYUI_WORKFLOW_PATH),
+                "async_enabled": COMFYUI_ASYNC_ENABLED,
+                "job_status_url": "/api/image-jobs/{job_id}",
                 "generated_images_url": "/generated-images",
             },
             "image_critic": {
@@ -1512,8 +1697,17 @@ def health() -> dict[str, Any]:
                 "pass_score": VLM_CRITIC_PASS_SCORE,
             },
         },
+        "components": components,
         "manifest": manifest,
     }
+
+
+@app.get("/api/image-jobs/{job_id}")
+def image_job(job_id: str) -> dict[str, Any]:
+    job = _get_image_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="未找到图像任务")
+    return job
 
 
 @app.get("/api/corpus")

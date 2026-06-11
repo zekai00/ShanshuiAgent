@@ -260,8 +260,7 @@ function renderAgentTrace() {
   target.innerHTML = `<div class="trace-title">Agent 工作流</div><ol>${items}</ol>`;
 }
 
-function renderAgentArtifactsHtml() {
-  const spec = state.imageSpec;
+function renderAgentArtifactsHtml(artifacts = state.imageArtifacts, spec = state.imageSpec) {
   const specHtml = spec
     ? `<details class="image-spec">
         <summary>图像 Prompt</summary>
@@ -273,7 +272,7 @@ function renderAgentArtifactsHtml() {
         <pre>${escapeHtml(spec.negative_prompt || "")}</pre>
       </details>`
     : "";
-  const imageHtml = state.imageArtifacts.map((item) => {
+  const imageHtml = artifacts.map((item) => {
     if (item.status === "success" && item.url) {
       return `
         <figure class="generated-image">
@@ -283,6 +282,14 @@ function renderAgentArtifactsHtml() {
             <a class="mini-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer" download>下载图片</a>
           </figcaption>
         </figure>
+      `;
+    }
+    if (item.status === "queued" || item.status === "running") {
+      return `
+        <div class="image-error">
+          <strong>图像生成中</strong>
+          <span>${escapeHtml(item.message || "后台任务正在处理")}</span>
+        </div>
       `;
     }
     return `
@@ -295,8 +302,8 @@ function renderAgentArtifactsHtml() {
   return specHtml || imageHtml ? `<div class="agent-artifacts">${specHtml}${imageHtml}</div>` : "";
 }
 
-function renderAssistantOutput(node, answer) {
-  node.innerHTML = `${renderAnswerHtml(answer || "")}${renderAgentArtifactsHtml()}`;
+function renderAssistantOutput(node, answer, artifacts = state.imageArtifacts, spec = state.imageSpec) {
+  node.innerHTML = `${renderAnswerHtml(answer || "")}${renderAgentArtifactsHtml(artifacts, spec)}`;
 }
 
 function renderEvidence(target, evidence) {
@@ -360,6 +367,28 @@ async function fetchJson(url, options = {}) {
     throw new Error(payload.detail || `HTTP ${res.status}`);
   }
   return payload;
+}
+
+async function pollImageJob(jobId, artifactIndex, outputNode, getAnswer, artifacts, getSpec) {
+  if (!jobId) return;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    try {
+      const job = await fetchJson(`/api/image-jobs/${encodeURIComponent(jobId)}`);
+      const result = job.image_result || { status: job.status, message: job.message, job_id: jobId };
+      artifacts[artifactIndex] = result;
+      renderAssistantOutput(outputNode, getAnswer(), artifacts, getSpec());
+      if (["success", "failed", "cancelled"].includes(result.status || job.status)) return;
+    } catch (error) {
+      artifacts[artifactIndex] = {
+        status: "failed",
+        message: `图像任务查询失败：${error.message}`,
+        job_id: jobId,
+      };
+      renderAssistantOutput(outputNode, getAnswer(), artifacts, getSpec());
+      return;
+    }
+  }
 }
 
 async function loadHealth() {
@@ -502,6 +531,8 @@ async function sendChat(message) {
   state.agentTrace = [];
   state.imageArtifacts = [];
   state.imageSpec = null;
+  const runImageArtifacts = [];
+  let runImageSpec = null;
   $("#evidence-count").textContent = "0";
   renderEvidence($("#evidence-list"), state.evidence);
   renderAgentTrace();
@@ -551,14 +582,22 @@ async function sendChat(message) {
         updateAnswerStatus({ phase: "研究卷宗完成", direct: !state.evidence.length });
       }
       if (event.type === "image_spec") {
-        state.imageSpec = event.spec || null;
-        renderAssistantOutput(loadingNode, answer);
+        runImageSpec = event.spec || null;
+        state.imageSpec = runImageSpec;
+        renderAssistantOutput(loadingNode, answer, runImageArtifacts, runImageSpec);
         updateAnswerStatus({ phase: "Prompt 已生成", direct: !state.evidence.length });
       }
       if (event.type === "image") {
-        state.imageArtifacts.push(event.image || {});
-        renderAssistantOutput(loadingNode, answer);
-        updateAnswerStatus({ phase: "图像生成完成", direct: !state.evidence.length });
+        const artifactIndex = runImageArtifacts.push(event.image || {}) - 1;
+        state.imageArtifacts = runImageArtifacts;
+        renderAssistantOutput(loadingNode, answer, runImageArtifacts, runImageSpec);
+        updateAnswerStatus({
+          phase: event.image?.status === "queued" ? "图像任务已提交" : "图像生成完成",
+          direct: !state.evidence.length,
+        });
+        if (event.image?.status === "queued" && event.image?.job_id) {
+          pollImageJob(event.image.job_id, artifactIndex, loadingNode, () => answer, runImageArtifacts, () => runImageSpec);
+        }
       }
       if (event.type === "phase" && !answer) {
         loadingNode.textContent = event.phase || "";
@@ -567,14 +606,14 @@ async function sendChat(message) {
       if (event.type === "delta") {
         answer += event.delta || "";
         state.citedRanks = citationRanksFromText(answer);
-        renderAssistantOutput(loadingNode, answer);
+        renderAssistantOutput(loadingNode, answer, runImageArtifacts, runImageSpec);
         renderEvidence($("#evidence-list"), state.evidence);
         updateAnswerStatus({ phase: "生成中", direct: !state.evidence.length });
         $("#messages").scrollTop = $("#messages").scrollHeight;
       }
       if (event.type === "error") {
         answer += `\n请求失败：${event.message || "未知错误"}`;
-        renderAssistantOutput(loadingNode, answer);
+        renderAssistantOutput(loadingNode, answer, runImageArtifacts, runImageSpec);
       }
       if (event.type === "done") {
         updateAnswerStatus({ phase: "完成", direct: !state.evidence.length });
@@ -719,21 +758,27 @@ async function loadCorpus() {
 
 function renderSystem(data) {
   const modelName = (value) => String(value || "未知").split("/").filter(Boolean).pop() || "未知";
+  const componentStatus = (component) => component?.status || (component?.exists ? "ok" : "unknown");
   const routerText = data.router?.llm_enabled
     ? `规则 + ${data.router.router_model} + 阈值 ${data.router.min_rerank_score}`
     : `规则 + 阈值 ${data.router?.min_rerank_score ?? "n/a"}`;
   const basicMetrics = [
     ["回答模型", data.answer_model || (data.llm_configured ? "可用" : "未配置")],
     ["Agent 模式", data.agent?.mode || "未启用"],
-    ["证据库", data.evidence_dir ? "已加载" : "未知"],
+    ["证据库", componentStatus(data.components?.evidence_store)],
     ["路由策略", routerText],
   ];
   const diagnostics = [
     ["服务提供方", data.answer_provider || "未知"],
-    ["向量模型", modelName(data.retriever_models?.encoder)],
-    ["重排模型", modelName(data.retriever_models?.reranker)],
-    ["生图引擎", data.agent?.image_generation?.provider || "未配置"],
+    ["向量模型", `${modelName(data.retriever_models?.encoder)} / ${componentStatus(data.components?.retrieval_index?.encoder)}`],
+    ["重排模型", `${modelName(data.retriever_models?.reranker)} / ${componentStatus(data.components?.retrieval_index?.reranker)}`],
+    ["Milvus Lite", componentStatus(data.components?.retrieval_index?.milvus_lite)],
+    ["ColBERT", componentStatus(data.components?.retrieval_index?.colbert_tensors)],
+    ["生图引擎", `${data.agent?.image_generation?.provider || "未配置"} / ${componentStatus(data.components?.comfyui?.service)}`],
+    ["异步生图", data.agent?.image_generation?.async_enabled ? "启用" : "关闭"],
     ["生图工作流", modelName(data.agent?.image_generation?.workflow)],
+    ["VLM 评审", data.components?.vlm_critic?.enabled ? componentStatus(data.components?.vlm_critic?.model) : "关闭"],
+    ["Neo4j", data.components?.neo4j?.status || "未知"],
     ["训练模型", data.trained_researcher_lora_exists ? "已存在，当前未用于前端回答" : "未发现"],
   ];
   const metricHtml = (items) => items

@@ -31,8 +31,11 @@ config/
 
 # -------- 新增忽略规则 --------
 
-# 1. 忽略测试目录
-tests/
+# 1. 忽略旧测试目录，但保留轻量 Web Agent smoke tests
+tests/*
+!tests/web_agent/
+tests/web_agent/*
+!tests/web_agent/test_web_agent_smoke.py
 
 # 2. 忽略模型下载脚本
 downloads/
